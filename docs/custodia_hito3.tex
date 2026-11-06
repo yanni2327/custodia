@@ -997,36 +997,43 @@ V12 & Límite de copias por usuario (\texttt{test\_descargas}). & Mitigado \\
 \appendices
 \section{Atención a la retroalimentación}
 \label{anx:retro}
-La Tabla~\ref{tab:retro} relaciona las observaciones recibidas con el lugar de este documento donde quedan atendidas.
+La evaluación del docente organizó sus observaciones en las dimensiones Saber, Ser y Hacer, más un conjunto de observaciones generales. La Tabla~\ref{tab:retro} relaciona cada una con el ajuste realizado y el lugar de este documento donde queda atendida.
 
 \begin{table}[!htb]
-\caption{Observaciones recibidas y ajustes realizados}
+\caption{Observaciones del docente y ajustes realizados}
 \label{tab:retro}
 \centering
 \footnotesize
-\begin{tabular}{|p{2.9cm}|p{5.0cm}|}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{|p{1.5cm}|p{2.75cm}|p{3.6cm}|}
 \hline
-\textbf{Observación} & \textbf{Ajuste realizado} \\
+\textbf{Dimensión} & \textbf{Observación} & \textbf{Ajuste realizado} \\
 \hline
-\multicolumn{2}{|l|}{\textit{Hito 1}} \\
+Saber & No hay citas ni bibliografía; los conceptos técnicos y normativos no acreditan fuente. & Cada concepto se cita en el texto en formato IEEE; la sección de Referencias reúne 35 fuentes técnicas, académicas y normativas. \\
 \hline
-No hay citas ni bibliografía. & Cada concepto técnico y normativo se cita en formato IEEE; sección de Referencias. \\
+Ser & Párrafos duplicados en las limitaciones. & Limitaciones reescritas sin repeticiones (Sección~\ref{sec:alcance}). \\
 \hline
-Falta un marco teórico y legal. & Sección~\ref{sec:marco}, con la Ley 1581 de 2012 y la Ley 1273 de 2009. \\
+Ser & Encabezados mal escritos (``VI. A. Alcance'', ``VI- B. Limitaciones-''). & Los encabezados los numera la clase IEEEtran; ninguno se escribe a mano. \\
 \hline
-Errores de forma y ortografía. & Documento generado desde una única fuente LaTeX compilada y revisada. \\
+Ser & Faltas de tildes (``unicamente'', ``autenticacion'', ``grafica''). & Revisión ortográfica de todo el texto. \\
 \hline
-Vincular caso, requisitos y alcance. & El caso de estudio enlaza cada necesidad con sus requisitos (Sección~\ref{sec:caso}). \\
+Hacer & Expresiones LaTeX sin compilar. & El PDF se genera desde una única fuente LaTeX compilada sin errores, publicada en el repositorio. \\
 \hline
-Reforzar la perspectiva forense. & Sección~\ref{sec:forense}. \\
+Obs. & Preguntar si el contenido es de autoría propia. & El contenido es de las autoras; las ideas y normas de terceros se acreditan con su cita. \\
 \hline
-Añadir un \textit{Abstract} en inglés. & Incluido tras el Resumen. \\
+Obs. & Formato IEEE parcial por falta de referencias. & Formato IEEE completo: citas numeradas por orden de aparición y lista de referencias. \\
 \hline
-Prever el manejo de datos personales. & Sección~\ref{sec:marco}, marco legal. \\
+Obs. & Marco legal: Ley 1581 de 2012, prever datos personales. & Sección~\ref{sec:marco}: Ley 1581 de 2012 aplicada a un despliegue real; el proyecto usa solo datos de prueba. \\
 \hline
-\multicolumn{2}{|l|}{\textit{Hito 2}} \\
+Obs. & Capacidad ofensiva: no aplica (Ley 1273 de 2009). & Se ratifica en el marco legal: las pruebas de ataque se hicieron solo sobre equipos y cuentas propias. \\
 \hline
-\pendiente{observación del Hito 2} & \pendiente{ajuste} \\
+Sugerencia & Marco teórico con fuentes sobre control de acceso, NTFS, \textit{impersonation} y AES-256. & Sección~\ref{sec:marco}. \\
+\hline
+Sugerencia & Vincular caso de estudio, requisitos y alcance. & El caso de estudio enlaza cada necesidad con sus requisitos (Sección~\ref{sec:caso}). \\
+\hline
+Sugerencia & Reforzar la perspectiva forense de la bitácora. & Sección~\ref{sec:forense}, con las fases de NIST SP~800-86. \\
+\hline
+Sugerencia & Añadir un \textit{Abstract} en inglés. & \textit{Abstract} e \textit{Index Terms} tras el Resumen. \\
 \hline
 \end{tabular}
 \end{table}
@@ -1042,9 +1049,48 @@ Cualquier auditor puede comprobar con herramientas de Windows, sin pasar por Cus
     \item Abrir cualquier archivo del almacén con un editor de texto: debe empezar con \texttt{CUSTODIA} seguido de contenido ilegible.
 \end{itemize}
 
-\section{Capturas de pantalla}
-\label{anx:capturas}
-\pendiente{insertar capturas de: inicio de sesión, verificación en dos pasos, ventana principal con el panel de permisos, hoja de permisos, hoja de cuentas y grupos, bitácora con filtros y pantalla de bloqueo}
+\section{Matriz de trazabilidad}
+\label{anx:trazabilidad}
+La Tabla~\ref{tab:traza} relaciona cada requisito funcional con los controles que lo implementan (Tabla~\ref{tab:controles}) y con las pruebas automatizadas que lo verifican (Tabla~\ref{tab:suite}). Permite comprobar que ningún requisito queda sin control y señala el único que carece de prueba automatizada.
+
+\begin{table}[!htb]
+\caption{Trazabilidad entre requisitos, controles y pruebas}
+\label{tab:traza}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{|l|p{1.6cm}|>{\raggedright\arraybackslash}p{4.6cm}|}
+\hline
+\textbf{Req.} & \textbf{Controles} & \textbf{Pruebas} \\
+\hline
+RF-01 & C1, C21 & \texttt{test\_accounts} \\
+\hline
+RF-02 & C4, C21 & \texttt{test\_accounts}, \texttt{test\_grupos\_gui} \\
+\hline
+RF-03 & C3, C6, C11 & \texttt{test\_impersonation}, \texttt{test\_rnf} \\
+\hline
+RF-04 & C5 & \texttt{test\_jail} \\
+\hline
+RF-05 & C7, C12 & \texttt{test\_audit} \\
+\hline
+RF-06 & C3 & \texttt{test\_permissions} \\
+\hline
+RF-07 & C3 & \texttt{test\_permissions} \\
+\hline
+RF-08 & C8, C9, C10 & \texttt{test\_crypto} \\
+\hline
+RF-09 & C17 & \texttt{test\_totp}, \texttt{test\_confirmacion} \\
+\hline
+RF-10 & C2 & \texttt{test\_seguridad} \\
+\hline
+RF-11 & C18 & Sin prueba automatizada \\
+\hline
+RF-12 & C19 & \texttt{test\_descargas}, \texttt{test\_confirmacion} \\
+\hline
+RF-13 & C4 & \texttt{test\_alcance} \\
+\hline
+\end{tabular}
+\end{table}
 
 \section{Cronología de la implementación}
 \label{anx:cronologia}
