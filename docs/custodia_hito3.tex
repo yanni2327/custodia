@@ -3,6 +3,7 @@
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
+\graphicspath{{./}{figuras/}}
 \usepackage{textcomp}
 \usepackage[table]{xcolor}
 \usepackage[english,spanish,es-noquoting,es-noshorthands]{babel}
@@ -771,34 +772,58 @@ Desde una consola de Windows como administrador:
 Custodia se distribuye como un único archivo, \texttt{Custodia.exe}, que no requiere instalar Python. Al abrirlo, Windows pide permiso para ejecutarlo como administrador; es necesario porque la aplicación administra cuentas y permisos. En un equipo donde nunca se ha usado, Custodia prepara sola el almacén, los grupos, la clave de cifrado y la bitácora, y pide crear la primera cuenta administradora. Cada arranque tarda unos segundos, porque el ejecutable se descomprime en una carpeta temporal.
 
 \subsection{Iniciar sesión}
-Escriba su usuario y contraseña de Windows y pulse \textbf{Entrar}. Solo pueden entrar las cuentas dadas de alta en Custodia. Si un administrador le asignó una contraseña temporal, la aplicación le pedirá crear una propia antes de continuar (pantalla \textbf{Crea tu contraseña}); debe tener al menos 8 caracteres, con letras y números. Si su cuenta tiene la verificación en dos pasos activada, escriba el código de 6 dígitos que muestra su aplicación de autenticación y pulse \textbf{Verificar}. Tras 5 intentos fallidos en 10 minutos la cuenta se bloquea 15 minutos.
+Escriba su usuario y contraseña de Windows y pulse \textbf{Entrar}. Solo pueden entrar las cuentas dadas de alta en Custodia. Si un administrador le asignó una contraseña temporal, la aplicación le pedirá crear una propia antes de continuar (pantalla \textbf{Crea tu contraseña}); debe tener al menos 8 caracteres, con letras y números. Si su cuenta tiene la verificación en dos pasos activada, escriba el código de 6 dígitos que muestra su aplicación de autenticación y pulse \textbf{Verificar}. Tras 5 intentos fallidos en 10 minutos la cuenta se bloquea 15 minutos (Fig.~\ref{fig:ingreso}).
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.49\columnwidth]{figuras/ingreso.png}\hfill
+\includegraphics[width=0.49\columnwidth]{figuras/verificacion.png}
+\caption{Inicio de sesión (izquierda) y verificación en dos pasos (derecha).}
+\label{fig:ingreso}
+\end{figure}
 
 \subsection{Activar la verificación en dos pasos}
 Es obligatoria para añadir, renombrar, eliminar o exportar archivos y para cambiar permisos. En el perfil (\textbf{Tu cuenta}), abra \textbf{Verificación en dos pasos} y pulse \textbf{Activar}. Escanee el código QR con una aplicación de autenticación del teléfono (Google Authenticator, Microsoft Authenticator u otra compatible), escriba el código que muestra y pulse \textbf{Confirmar y activar}. Si intenta una operación sensible sin haberla activado, Custodia le ofrecerá activarla en ese momento.
 
 \subsection{La ventana principal}
-A la izquierda, el panel \textbf{Carpetas} muestra su espacio personal y la carpeta compartida con su grupo; no verá las carpetas de otras personas. En el centro, el listado de la carpeta abierta con \textbf{Nombre}, \textbf{Tamaño} y \textbf{Modificado}, y el buscador \textbf{Buscar en esta carpeta}. A la derecha, el panel \textbf{Lo que puedes hacer aquí} indica el \textbf{Propietario} del elemento seleccionado y sus permisos efectivos sobre él; se actualiza con cada selección.
+A la izquierda, el panel \textbf{Carpetas} muestra su espacio personal y la carpeta compartida con su grupo; no verá las carpetas de otras personas. Un administrador ve el almacén completo. En el centro, el listado de la carpeta abierta con \textbf{Nombre}, \textbf{Tamaño} y \textbf{Modificado}, y el buscador \textbf{Buscar en esta carpeta}. Sobre el listado, el encabezado indica cuántos elementos hay y cuántos están cifrados. A la derecha, el panel del elemento seleccionado muestra su tipo, tamaño y si está cifrado, su \textbf{Propietario} y, bajo \textbf{Lo que puedes hacer aquí}, sus permisos efectivos: las acciones permitidas aparecen marcadas y las denegadas tachadas. Debajo están las acciones \textbf{Guardar una copia…}, \textbf{Renombrar…} y \textbf{Permisos…}. El ícono de luna, arriba a la derecha, alterna entre tema claro y oscuro (Fig.~\ref{fig:principal}).
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\columnwidth]{figuras/principal.png}
+\caption{Ventana principal de un administrador: árbol de carpetas, listado con archivos cifrados y panel de permisos efectivos del archivo seleccionado.}
+\label{fig:principal}
+\end{figure}
+
 
 \subsection{Trabajar con archivos}
 \begin{itemize}
     \item \textbf{Nueva carpeta}: crea una carpeta en la ubicación actual.
     \item \textbf{Añadir archivos}: guarda uno o varios archivos, cifrados. También puede arrastrarlos a la ventana.
     \item \textbf{Renombrar…} y \textbf{Eliminar}: actúan sobre el elemento seleccionado. Su carpeta personal y la compartida no se pueden renombrar ni eliminar.
-    \item \textbf{Guardar una copia…}: exporta una copia legible fuera del almacén. Pide el motivo, que queda en la bitácora, y un código de verificación. Se permiten 20 copias cada 10 minutos.
+    \item \textbf{Guardar una copia…}: exporta una copia legible fuera del almacén. Pide el motivo, que queda en la bitácora (Fig.~\ref{fig:motivo}), y un código de verificación. Se permiten 20 copias cada 10 minutos.
 \end{itemize}
 Añadir, renombrar, eliminar y guardar una copia piden un código de verificación. Cada código sirve una sola vez: si Custodia responde que ya se usó, espere a que su aplicación muestre uno nuevo (cambia cada 30 segundos). Los códigos incorrectos cuentan para el bloqueo de la cuenta.
 
 \subsection{Permisos}
-Seleccione un elemento y pulse \textbf{Permisos…}. La hoja \textbf{Quién tiene acceso} lista las cuentas y grupos con permiso, marcando las entradas \textbf{Heredado} (vienen de la carpeta superior y no se editan aquí) y las de tipo \textbf{Denegado}. Con \textbf{Conceder un permiso} elija la cuenta o el grupo y \textbf{Qué puede hacer}; marque \textbf{Aplicar también a lo que contenga} para que el permiso se extienda a las subcarpetas. Solo puede cambiar permisos si Windows se lo permite: los administradores y el propietario del elemento.
+Seleccione un elemento y pulse \textbf{Permisos…}. La hoja \textbf{Quién tiene acceso} lista las cuentas y grupos con permiso, marcando las entradas \textbf{Heredado} (vienen de la carpeta superior y no se editan aquí) y las de tipo \textbf{Denegado}. En \textbf{Conceder un permiso} escriba la cuenta o el grupo en \textbf{A quién} y elija en \textbf{Qué puede hacer} una o varias opciones: \textbf{Abrir y leer}, \textbf{Modificar}, \textbf{Entrar y recorrer}, \textbf{Eliminar} o \textbf{Control total}. Active \textbf{Aplicar también a lo que contenga} para que las carpetas y archivos de dentro lo hereden, y pulse \textbf{Conceder}. Solo puede cambiar permisos si Windows se lo permite: los administradores y el propietario del elemento (Fig.~\ref{fig:permisos}).
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\columnwidth]{figuras/permisos.png}
+\caption{Hoja de permisos: entradas heredadas de la carpeta superior y formulario para conceder un permiso.}
+\label{fig:permisos}
+\end{figure}
+
 
 \subsection{Cuentas y grupos (administradores)}
-Desde \textbf{Cuentas y grupos} un administrador puede: crear una \textbf{Cuenta nueva}; \textbf{Añadir una cuenta de Windows existente}; \textbf{Asignar a un grupo…} o \textbf{Quitar de un grupo…}; crear un \textbf{Nuevo grupo}; restablecer la contraseña de una persona que la olvidó, con una contraseña temporal que se muestra una sola vez; y restablecer la verificación en dos pasos de quien perdió el teléfono. Las cuentas creadas por Custodia se pueden eliminar; las que ya existían en Windows solo se pueden \textbf{Retirar de Custodia}, sin borrarlas del equipo. Nadie puede retirarse a sí mismo ni retirar al último administrador.
+Desde \textbf{Cuentas y grupos} (Fig.~\ref{fig:cuentas}) un administrador puede: crear una \textbf{Cuenta nueva}, activando \textbf{Puede administrar Custodia} si la persona debe gestionar cuentas y consultar la bitácora; \textbf{Añadir una cuenta de Windows existente}; \textbf{Asignar a un grupo…} o \textbf{Quitar de un grupo…}; crear un \textbf{Nuevo grupo}; restablecer la contraseña de una persona que la olvidó, con una contraseña temporal que se muestra una sola vez; y restablecer la verificación en dos pasos de quien perdió el teléfono. Las cuentas creadas por Custodia se pueden eliminar; las que ya existían en Windows solo se pueden \textbf{Retirar de Custodia}, sin borrarlas del equipo. Nadie puede retirarse a sí mismo ni retirar al último administrador.
 
 \subsection{Bitácora (administradores)}
-La hoja \textbf{Bitácora de auditoría} muestra todos los eventos y permite buscar por usuario, recurso o detalle y filtrar por operación, por resultado y por fechas con un calendario que marca los días con actividad. Al elegir un evento se ven todos sus datos. Es de solo lectura: no hay forma de editar ni borrar registros desde la aplicación.
+La hoja \textbf{Bitácora de auditoría} (Fig.~\ref{fig:bitacora}) muestra los eventos agrupados por día y permite buscar por usuario, recurso o detalle, y filtrar por \textbf{Usuario}, \textbf{Operación}, \textbf{Fecha} (con un calendario que marca los días con actividad) y por resultado: \textbf{Todos}, \textbf{Denegados} o \textbf{Permitidos}. Al elegir un evento se ven todos sus datos. Es de solo lectura: no hay forma de editar ni borrar registros desde la aplicación.
 
 \subsection{Bloqueo y cierre de sesión}
-Tras 5 minutos sin usar el ratón ni el teclado, o al pulsar Ctrl+L, la ventana se cubre y pide su contraseña para continuar. Si permanece bloqueada 30 minutos más, la sesión se cierra. La aplicación permite además cambiar la propia contraseña, alternar entre tema claro y oscuro y cerrar la sesión.
+Tras 5 minutos sin usar el ratón ni el teclado, o al pulsar Ctrl+L, la ventana se cubre con la pantalla de bloqueo, que muestra la hora y pide su contraseña (Fig.~\ref{fig:bloqueo}). Pulse \textbf{Desbloquear} para continuar o \textbf{Cerrar sesión} para salir. Si permanece bloqueada 30 minutos más, la sesión se cierra. La aplicación permite además cambiar la propia contraseña, alternar entre tema claro y oscuro y cerrar la sesión.
 
 %======================================================================
 \section{Resultados y pruebas}
@@ -1098,6 +1123,38 @@ RF-13 & C4 & \texttt{test\_alcance} \\
 \hline
 \end{tabular}
 \end{table}
+
+\section{Capturas de pantalla}
+\label{anx:capturas}
+Las Figs.~\ref{fig:cuentas} a~\ref{fig:motivo} complementan las del manual de usuario (Sección~\ref{sec:manual}). Se tomaron con cuentas de prueba creadas por las autoras.
+
+\begin{figure*}[!htb]
+\centering
+\begin{minipage}[t]{0.485\textwidth}\centering
+\includegraphics[width=\linewidth]{figuras/cuentas.png}
+\caption{Hoja de cuentas y grupos. Cada cuenta indica su rol, si es una cuenta de Windows incorporada y si tiene la verificación en dos pasos activa.}
+\label{fig:cuentas}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\textwidth}\centering
+\includegraphics[width=\linewidth]{figuras/bitacora.png}
+\caption{Bitácora de auditoría filtrada por eventos denegados, con el detalle de un inicio de sesión rechazado porque la cuenta debía cambiar su contraseña.}
+\label{fig:bitacora}
+\end{minipage}
+\end{figure*}
+
+\begin{figure*}[!htb]
+\centering
+\begin{minipage}[t]{0.485\textwidth}\centering
+\includegraphics[width=\linewidth]{figuras/bloqueo.png}
+\caption{Pantalla de bloqueo por inactividad.}
+\label{fig:bloqueo}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\textwidth}\centering
+\includegraphics[width=\linewidth]{figuras/motivo.png}
+\caption{Motivo obligatorio antes de exportar una copia; queda registrado en la bitácora.}
+\label{fig:motivo}
+\end{minipage}
+\end{figure*}
 
 \section{Cronología de la implementación}
 \label{anx:cronologia}
