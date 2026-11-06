@@ -1,0 +1,18 @@
+# Entorno virtual y cachés de Python
+.venv/
+__pycache__/
+*.pyc
+
+# Pruebas y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Salidas de PyInstaller (el ejecutable pesa ~170 MB: se publica como Release)
+build/
+dist/
+
+# Compilación de LaTeX
+docs/*.aux
+docs/*.log
+docs/*.out

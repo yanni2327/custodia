@@ -1,0 +1,22 @@
+# Custodia — núcleo. Solo Windows.
+#
+# pywin32 publica ruedas para cp312, cp313, cp314 y cp315. Aporta las APIs de
+# seguridad: LogonUser, ImpersonateLoggedOnUser, las ACL de NTFS y DPAPI.
+pywin32>=312
+
+# AES-256-GCM. Implementación auditada sobre OpenSSL, con aceleración AES-NI.
+cryptography>=44.0
+
+# Interfaz de escritorio nativa (RNF-07: sin navegador ni servidor local)
+PySide6>=6.8
+
+# Código QR para dar de alta el segundo factor en la app del teléfono. Puro
+# Python y sin dependencias; el QR se genera en el equipo, nunca en un servicio.
+segno>=1.6
+
+# Pruebas y cobertura (RNF-06: no menos del 80 % del núcleo)
+pytest>=8.3
+pytest-cov>=6.0
+
+# Empaquetado (RNF-07). Solo hace falta para construir el ejecutable.
+pyinstaller>=6.11
