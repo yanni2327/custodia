@@ -6,7 +6,7 @@ la decide el kernel, mediante cuentas locales, permisos NTFS y suplantación de
 identidad. El contenido se protege además con AES-256 en reposo, y las
 operaciones sensibles exigen un segundo factor (TOTP).
 
-**Estado:** núcleo e interfaz implementados (Hito 3, ver `docs/`). Pendientes al
+**Estado:** núcleo e interfaz implementados (Hito 3). Pendientes al
 final de este documento.
 
 ## Requisitos
@@ -28,7 +28,7 @@ python scripts\spike_impersonation.py
 pytest
 ```
 
-Cobertura del núcleo (RNF-06, mínimo 80 %; hoy 73 %):
+Cobertura del núcleo (RNF-06, mínimo 80 %; hoy 90 %):
 
 ```bat
 pytest --cov=custodia.core --cov-report=term-missing
@@ -57,6 +57,7 @@ src/custodia/core/
                    cuentas existentes, contraseñas temporales y cambio obligatorio
   acl.py           DACL de NTFS: leer y escribir permisos (RF-06)
   crypto.py        AES-256-GCM con clave maestra DPAPI (RF-08)
+  respaldo.py      Respaldo y recuperación de la clave maestra (C13)
   boveda.py        Cifrado por usuario (RSA-2048 + AES-GCM). Desactivado por defecto
   fsops.py         Operaciones sobre archivos reales (RF-03)
   permissions.py   Contrato can(sujeto, ruta, acción) (RNF-03, RF-07)
@@ -91,10 +92,7 @@ scripts/
   custodia_gui.py          Arranca la interfaz
   generar_icono.py         Regenera recursos/custodia.ico a partir del logo
 
-docs/
-  custodia_hito3.tex       Informe del Hito 3 (IEEE); figuras en docs/figuras
-
-tests/                     137 pruebas sobre Windows real (crean y borran
+tests/                     262 pruebas sobre Windows real (crean y borran
                            cuentas temporales); ver «Verificación»
 ```
 
@@ -143,6 +141,7 @@ la única puerta):
   eliminar grupos, restablecer contraseña o segundo factor de otra cuenta.
 - La propia cuenta: desactivar el segundo factor (si no, quien encontrara la
   sesión abierta podría quitarlo para saltarse lo demás).
+- La clave maestra: exportar y restaurar su respaldo.
 
 Reglas: sin segundo factor activado esas operaciones no se permiten (se ofrece
 activarlo con un QR); **cada código vale una sola vez** por sesión, también el
@@ -229,6 +228,40 @@ honesta: cualquier proceso de esta máquina podría llamar a `CryptUnprotectData
 sobre el blob. Se mitiga con una ACL restrictiva y entropía propia, pero no se
 elimina.
 
+## Respaldo y recuperación de la clave maestra (C13)
+
+El blob de `master.key` solo se abre en este equipo. El respaldo es un archivo
+`.custodiakey` con la clave cifrada con una contraseña de recuperación de al
+menos 12 caracteres (scrypt y AES-256-GCM). **Quien tenga el archivo y la
+contraseña puede descifrar todos los archivos**: guárdalos en lugares distintos.
+
+**Exportar.** Perfil → Respaldo de la clave → Exportar respaldo, con el código
+TOTP. Solo administradores. Conviene guardarlo en una USB; el programa no lo
+acepta dentro del almacén ni junto a la clave.
+
+**Recuperar en este equipo.** Si `master.key` se dañó o se perdió, Custodia
+arranca igual y avisa, sin generar otra clave si el almacén ya tiene archivos
+cifrados. Entra con una cuenta administradora y usa Perfil → Respaldo de la
+clave → Restaurar respaldo, con el código TOTP.
+
+**Recuperar en un equipo nuevo.**
+
+1. Copia el almacén a `C:\ProgramData\Custodia\storage`, antes de abrir Custodia
+   o antes de crear archivos nuevos.
+2. Abre Custodia y crea la cuenta administradora que pide.
+3. Activa el segundo factor y restaura el respaldo.
+4. Vuelve a crear las demás cuentas y a activar su segundo factor.
+
+El respaldo solo contiene la clave maestra. No incluye las cuentas ni el segundo
+factor, porque `2fa.dat` está protegido con DPAPI y no sirve en otro equipo, ni
+`identidades.json` si se usa el cifrado por usuario. Los permisos NTFS de cuentas
+del equipo anterior hay que revisarlos.
+
+Antes de escribir, la restauración comprueba que la clave abra un archivo del
+almacén. Si hay archivos y ninguno abre, se rechaza y no se modifica nada. La
+clave reemplazada se conserva 30 días como `master.key.anterior-<fecha>`: es el
+blob DPAPI, con la misma ACL, nunca la clave en claro.
+
 ## Salvaguardas de administración
 
 Crear, modificar y borrar cuentas reales del sistema exige cuidado:
@@ -273,7 +306,7 @@ El icono es `src/custodia/gui/recursos/custodia.ico`. Si cambia el logo:
 
 ## Verificación
 
-137 pruebas sobre Windows real (136 pasan, 1 se omite). Mediciones actuales:
+262 pruebas sobre Windows real (261 pasan, 1 se omite). Mediciones actuales:
 
 | Requisito | Resultado |
 |-----------|-----------|
@@ -281,14 +314,13 @@ El icono es `src/custodia/gui/recursos/custodia.ico`. Si cambia el logo:
 | RNF-02 ≤ 500 ms por 10 MB | 49,5 ms |
 | RNF-03 contrato contra ambos backends | Cumple |
 | RNF-05 sin archivos parciales | Cumple |
-| RNF-06 cobertura ≥ 80 % | **73 %** (no cumple) |
+| RNF-06 cobertura ≥ 80 % | 90 % (cumple) |
 | RNF-08 sobrecarga del cifrado ≤ 200 ms | 14,8 ms |
 
 ## Pendiente
 
-- Respaldo y recuperación de la clave maestra (control C13 del análisis de
-  riesgos): es el único control del diseño sin implementar.
-- Subir la cobertura del núcleo al 80 % (RNF-06).
+- Probar la restauración del respaldo de la clave (C13) en un segundo equipo
+  físico: hoy está probada en este equipo, simulando la pérdida de la clave.
 - Prueba de usabilidad con dos personas ajenas al desarrollo (RNF-04).
 - Prueba del ejecutable en un equipo limpio (RNF-07) y reducir su tamaño
   excluyendo los módulos de Qt Quick que no se usan.

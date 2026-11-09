@@ -34,7 +34,7 @@ from pathlib import Path
 import ntsecuritycon as con
 import win32security
 
-from . import acl, config
+from . import acl, audit, config
 from .acl import Perm
 from .errors import AccountError
 
@@ -110,6 +110,9 @@ def asegurar_espacio(username: str) -> Path:
 
     Se llama al crear la cuenta y también al iniciar sesión, para que las
     cuentas creadas antes de que existiera esta función también lo tengan.
+
+    :raises AccountError: la carpeta existe, pero no se pudo asignar a la cuenta
+        como propietaria. El fallo también queda en la bitácora.
     """
     carpeta = ruta_personal(username)
     carpeta.mkdir(parents=True, exist_ok=True)
@@ -126,16 +129,22 @@ def asegurar_espacio(username: str) -> Path:
         )
     except AccountError:
         # La cuenta no existe en Windows. La carpeta queda solo para
-        # administradores, que es el comportamiento seguro.
-        pass
+        # administradores, que es el comportamiento seguro, y no hay a quién
+        # asignarla como propietaria.
+        return carpeta
 
     # El usuario pasa a ser el propietario de su espacio. En Windows el
     # propietario siempre conserva el derecho de leer y cambiar la DACL, así
     # que nunca puede quedar excluido de su propia carpeta por error.
     try:
         acl.cambiar_propietario(carpeta, username)
-    except Exception:
-        pass
+    except Exception as exc:
+        audit.registrar("sistema", "propietario_espacio", f"/{username}", exito=False,
+                        detalle=f"{type(exc).__name__}: {exc}")
+        raise AccountError(
+            f"La carpeta de '{username}' existe, pero no se pudo asignar a esa "
+            "cuenta como propietaria."
+        ) from exc
 
     return carpeta
 

@@ -19,11 +19,15 @@ solo confundiría a quien intente entender por qué alguien tiene o no acceso.
 """
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import QFileDialog
 
+from ..core import config, respaldo
 from ..core.acl import Perm
 from ..core.errors import AuthenticationError, CustodiaError
 from . import avisos
@@ -51,6 +55,10 @@ _OPERACIONES = {
     "restablecer_contrasena": "Contraseña restablecida",
     "incorporar_usuario": "Cuenta de Windows añadida",
     "retirar_usuario": "Cuenta retirada de Custodia",
+    "exportar_clave": "Respaldo de la clave exportado",
+    "restaurar_clave": "Respaldo de la clave restaurado",
+    "clave_no_disponible": "Clave maestra no disponible",
+    "propietario_espacio": "Propietario de la carpeta personal",
 }
 
 
@@ -759,6 +767,172 @@ class ControladorContrasena(_Controlador):
         self.v._notificar("Contraseña cambiada")
         self.cerrar.emit()
         return ""
+
+
+# =============================================================================
+#  Respaldo de la clave maestra (C13)
+# =============================================================================
+
+class ControladorRespaldo(_Controlador):
+    """
+    Exportar y restaurar el respaldo. Solo se abre para administradores.
+
+    scrypt tarda a propósito, así que el cifrado corre en un hilo que no
+    suplanta a nadie. Las contraseñas solo viven en los argumentos: no se
+    guardan en el controlador.
+    """
+
+    error = Signal(str)
+    ocupadoChanged = Signal()
+    archivoChanged = Signal()
+    _listo = Signal(object, object)
+
+    def __init__(self, ventana) -> None:
+        super().__init__(ventana)
+        self._ocupado = False
+        self._origen = ""
+        self._cerrada = False
+        self._listo.connect(self._al_terminar)
+
+    ocupado = Property(bool, lambda self: self._ocupado, notify=ocupadoChanged)
+    archivo = Property(str, lambda self: Path(self._origen).name if self._origen else "",
+                       notify=archivoChanged)
+
+    def al_cerrar(self) -> None:
+        self._cerrada = True
+
+    def _poner_ocupado(self, valor: bool) -> None:
+        self._ocupado = valor
+        self.ocupadoChanged.emit()
+
+    def _en_hilo(self, trabajo, continuacion) -> None:
+        self._poner_ocupado(True)
+
+        def correr() -> None:
+            try:
+                resultado = (True, trabajo())
+            except (CustodiaError, PermissionError) as exc:
+                resultado = (False, str(exc))
+            except Exception:
+                resultado = (False, "No se pudo completar la operación.")
+            try:
+                self._listo.emit(continuacion, resultado)
+            except RuntimeError:
+                pass   # la hoja ya se cerró y Qt liberó el controlador
+
+        threading.Thread(target=correr, name="custodia-respaldo", daemon=True).start()
+
+    @Slot(object, object)
+    def _al_terminar(self, continuacion, resultado: tuple) -> None:
+        self._poner_ocupado(False)
+        if self._cerrada:
+            return
+        correcto, valor = resultado
+        if correcto:
+            continuacion(valor)
+        else:
+            self.error.emit(valor)
+
+    # -- exportar -----------------------------------------------------------
+
+    @Slot(str, str)
+    @_diferido
+    def exportar(self, password: str, repetida: str) -> None:
+        if self._ocupado:
+            return
+        if password != repetida:
+            self.error.emit("Las dos contraseñas no coinciden.")
+            return
+        problema = respaldo.regla_contrasena(password)
+        if problema:
+            self.error.emit(problema)
+            return
+
+        sugerido = f"custodia-clave-{datetime.now():%Y%m%d}{respaldo.EXTENSION}"
+        destino, _ = QFileDialog.getSaveFileName(
+            self.v, "Guardar el respaldo de la clave", sugerido,
+            f"Respaldo de Custodia (*{respaldo.EXTENSION})")
+        if not destino:
+            return
+
+        if not self.v._confirmar_con_codigo(
+            "Exportar el respaldo de la clave",
+            "Este archivo y su contraseña dan acceso a todos los archivos de "
+            "Custodia. Escribe el código de tu app de autenticación para "
+            "confirmarlo.",
+            operacion="exportar clave maestra", aceptar="Exportar",
+        ):
+            return
+
+        self._en_hilo(lambda: self.sesion.exportar_respaldo_clave(password, destino),
+                      lambda _: self._exportado(destino))
+
+    def _exportado(self, destino: str) -> None:
+        avisos.exito(
+            self.v, "Respaldo exportado",
+            f"Se guardó «{Path(destino).name}». Guárdalo fuera de este equipo y "
+            "conserva la contraseña en otro lugar: sin ella no se puede abrir."
+        )
+        self.cerrar.emit()
+
+    # -- restaurar ----------------------------------------------------------
+
+    @Slot()
+    @_diferido
+    def elegirArchivo(self) -> None:
+        origen, _ = QFileDialog.getOpenFileName(
+            self.v, "Elegir el respaldo de la clave", "",
+            f"Respaldo de Custodia (*{respaldo.EXTENSION});;Todos los archivos (*)")
+        if origen:
+            self._origen = origen
+            self.archivoChanged.emit()
+
+    @Slot(str)
+    @_diferido
+    def restaurar(self, password: str) -> None:
+        if self._ocupado:
+            return
+        if not self._origen:
+            self.error.emit("Elige primero el archivo de respaldo.")
+            return
+        if not password:
+            self.error.emit("Escribe la contraseña de recuperación.")
+            return
+        origen = self._origen
+        self._en_hilo(lambda: self.sesion.preparar_restauracion_clave(origen, password),
+                      self._confirmar_restauracion)
+
+    def _confirmar_restauracion(self, preparada) -> None:
+        partes = [
+            "Se comprobó que esta clave abre archivos del almacén."
+            if preparada.verificada else
+            "El almacén no tiene archivos cifrados con los que comprobar esta clave."
+        ]
+        if preparada.reemplaza:
+            partes.append(
+                "Va a REEMPLAZAR la clave maestra actual: lo cifrado con ella "
+                "dejará de abrirse. La clave anterior se guarda protegida "
+                f"durante {config.RETENCION_COPIA_CLAVE_DIAS} días."
+            )
+        partes.append("Escribe el código de tu app de autenticación para confirmarlo.")
+
+        if not self.v._confirmar_con_codigo(
+            "Restaurar el respaldo de la clave", "\n\n".join(partes),
+            operacion="restaurar clave maestra",
+            aceptar="Reemplazar la clave" if preparada.reemplaza else "Restaurar",
+            peligro=True,
+        ):
+            return
+
+        try:
+            self.sesion.aplicar_restauracion_clave(preparada)
+        except (CustodiaError, PermissionError) as exc:
+            self.error.emit(str(exc))
+            return
+        avisos.exito(self.v, "Clave restaurada",
+                     "La clave maestra quedó protegida en este equipo y ya está "
+                     "en uso.")
+        self.cerrar.emit()
 
 
 def _qr_data_url(texto: str, escala: int = 8, margen: int = 4) -> str:

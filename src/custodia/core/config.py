@@ -29,6 +29,10 @@ AUDIT_DB = Path(os.getenv("CUSTODIA_AUDIT_DB", r"C:\ProgramData\Custodia\audit.d
 #: claro: lo que se guarda es un blob que solo esta máquina puede descifrar.
 KEY_FILE = Path(os.getenv("CUSTODIA_KEY_FILE", r"C:\ProgramData\Custodia\master.key"))
 
+#: Días que se conserva la copia de la clave anterior tras restaurar un
+#: respaldo (control C13). Es el blob DPAPI, nunca la clave en claro.
+RETENCION_COPIA_CLAVE_DIAS = int(os.getenv("CUSTODIA_RETENCION_COPIA_CLAVE_DIAS", "30"))
+
 # ---------------------------------------------------------------------------
 # Cuentas de Windows
 # ---------------------------------------------------------------------------

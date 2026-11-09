@@ -63,6 +63,9 @@ from __future__ import annotations
 import os
 import struct
 import threading
+import time
+import uuid
+from datetime import datetime
 from pathlib import Path
 
 import ntsecuritycon as con
@@ -152,20 +155,136 @@ def crear_clave_maestra(ruta: Path | None = None, *, forzar: bool = False) -> No
     ruta.parent.mkdir(parents=True, exist_ok=True)
 
     clave = os.urandom(32)   # AES-256
-    blob = win32crypt.CryptProtectData(
-        clave,
-        "Custodia: clave maestra de cifrado",
-        _ENTROPIA,
-        None, None,
-        _CRYPTPROTECT_LOCAL_MACHINE,
-    )
-    ruta.write_bytes(blob)
+    ruta.write_bytes(_blob_dpapi(clave))
     _proteger_archivo_de_clave(ruta)
 
     # La copia en claro desaparece de nuestras variables al salir de la función.
     # Python no garantiza el borrado de la memoria, así que no se promete más
     # de lo que se puede cumplir.
     del clave
+
+
+def _blob_dpapi(clave: bytes) -> bytes:
+    """Protege la clave con DPAPI, con ámbito de máquina y la entropía propia."""
+    return win32crypt.CryptProtectData(
+        clave,
+        "Custodia: clave maestra de cifrado",
+        _ENTROPIA,
+        None, None,
+        _CRYPTPROTECT_LOCAL_MACHINE,
+    )
+
+
+def _escribir_protegido(ruta: Path, datos: bytes) -> None:
+    """Escribe un archivo que tiene la ACL restrictiva antes de recibir datos."""
+    ruta.touch()
+    _proteger_archivo_de_clave(ruta)
+    with open(ruta, "wb") as f:
+        f.write(datos)
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def clave_disponible() -> bool:
+    """True si la clave maestra está cargada en memoria."""
+    with _lock:
+        return _clave_cache is not None
+
+
+def clave_para_respaldo() -> bytes:
+    """
+    La clave maestra en claro, para volver a cifrarla en un respaldo (C13).
+
+    Solo debe llamarla `respaldo.py`, con la identidad de la aplicación.
+    """
+    return _clave_maestra()
+
+
+def clave_abre(clave: bytes, blob: bytes) -> bool:
+    """¿Esta clave descifra este archivo cifrado con la clave maestra (v1)?"""
+    nonce = blob[_CABECERA.size:TAM_CABECERA]
+    try:
+        AESGCM(clave).decrypt(nonce, blob[TAM_CABECERA:], None)
+    except (InvalidTag, ValueError):
+        return False
+    return True
+
+
+def es_archivo_v1(cabecera: bytes) -> bool:
+    """True si son los primeros bytes de un archivo cifrado con la clave maestra."""
+    return esta_cifrado(cabecera) and cabecera[len(MAGIA)] == VERSION
+
+
+def instalar_clave_maestra(clave: bytes) -> Path | None:
+    """
+    Sustituye la clave maestra por `clave` y deja de usar la anterior (C13).
+
+    El reemplazo es atómico: el blob nuevo va a un temporal con la ACL ya
+    aplicada y solo al final se renombra. Si algo falla, `master.key` queda como
+    estaba. A disco solo llegan blobs DPAPI, nunca la clave en claro.
+
+    :return: la copia del blob anterior, o None si no había ninguno.
+    """
+    global _clave_cache
+
+    if len(clave) != 32:
+        raise CryptoError("La clave restaurada no mide 32 bytes.")
+    if is_impersonating():
+        raise CryptoError("La clave maestra no se puede instalar bajo suplantación.")
+
+    ruta = Path(config.KEY_FILE)
+    temporal = ruta.with_name(f"{ruta.name}.{uuid.uuid4().hex}.tmp")
+    copia: Path | None = None
+
+    with _lock:
+        try:
+            ruta.parent.mkdir(parents=True, exist_ok=True)
+            _escribir_protegido(temporal, _blob_dpapi(clave))
+
+            anterior = _leer_blob_anterior(ruta)
+            if anterior is not None:
+                marca = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+                copia = ruta.with_name(f"{ruta.name}.anterior-{marca}")
+                _escribir_protegido(copia, anterior)
+
+            os.replace(temporal, ruta)
+        except Exception as exc:
+            for sobrante in (temporal, copia):
+                if sobrante is not None:
+                    sobrante.unlink(missing_ok=True)
+            raise CryptoError(
+                "No se pudo guardar la clave maestra. La clave anterior no se "
+                "modificó."
+            ) from exc
+
+        # Sin esto, la aplicación seguiría cifrando con la clave reemplazada
+        # hasta el próximo arranque.
+        _clave_cache = clave
+
+    return copia
+
+
+def _leer_blob_anterior(ruta: Path) -> bytes | None:
+    """Lee el blob que se va a reemplazar; uno ilegible no impide recuperar."""
+    try:
+        return ruta.read_bytes()
+    except OSError:
+        return None
+
+
+def purgar_copias_anteriores(dias: int) -> int:
+    """Borra las copias de claves anteriores con más de `dias` días."""
+    ruta = Path(config.KEY_FILE)
+    limite = time.time() - dias * 86400
+    borradas = 0
+    for copia in ruta.parent.glob(f"{ruta.name}.anterior-*"):
+        try:
+            if copia.stat().st_mtime < limite:
+                copia.unlink()
+                borradas += 1
+        except OSError:
+            continue
+    return borradas
 
 
 def precargar_clave() -> None:

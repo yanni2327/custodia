@@ -91,3 +91,16 @@ class CryptoError(CustodiaError):
     existe, la clave maestra no se puede descifrar (blob de otra máquina), o el
     contenido del archivo fue alterado y falla la autenticación de GCM.
     """
+
+
+class RespaldoError(CryptoError):
+    """
+    Falló la exportación o la restauración del respaldo de la clave maestra.
+
+    `motivo` es un texto fijo apto para la bitácora: nunca incluye la clave, la
+    contraseña ni el texto de otra excepción.
+    """
+
+    def __init__(self, mensaje: str, motivo: str) -> None:
+        super().__init__(mensaje)
+        self.motivo = motivo

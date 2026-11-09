@@ -43,7 +43,8 @@ from ..core.permissions import Accion
 from . import avisos, estilo
 from .bloqueo import VigilanteInactividad
 from .hojas import (ControladorBitacora, ControladorContrasena, ControladorCuentas,
-                    ControladorPermisos, ControladorSegundoFactor)
+                    ControladorPermisos, ControladorRespaldo,
+                    ControladorSegundoFactor)
 from .qmlbase import CARPETA_QML, actualizar_tema, preparar_contexto
 from .sesion import Sesion
 
@@ -264,6 +265,25 @@ class VentanaPrincipal(QMainWindow):
         self._abrir("/")
         self._actualizar_perfil()
         self._preparar_bloqueo()
+        QTimer.singleShot(0, self._avisar_clave_no_disponible)
+
+    def _avisar_clave_no_disponible(self) -> None:
+        """Modo de recuperación: la clave maestra está dañada o falta."""
+        if self.sesion.clave_disponible():
+            return
+        if self.sesion.es_admin:
+            avisos.advertencia(
+                self, "La clave maestra no está disponible",
+                "No se puede abrir la clave de cifrado de este equipo y los "
+                "archivos cifrados no se pueden leer. Abre tu perfil y entra en "
+                "«Respaldo de la clave» para restaurar un respaldo."
+            )
+        else:
+            avisos.advertencia(
+                self, "La clave maestra no está disponible",
+                "Los archivos cifrados no se pueden abrir por ahora. Avisa a un "
+                "administrador de Custodia para que restaure el respaldo."
+            )
 
     # -- construcción -------------------------------------------------------
 
@@ -658,6 +678,7 @@ class VentanaPrincipal(QMainWindow):
             "permisos": self._abrir_permisos,
             "cuentas": self._abrir_cuentas,
             "bitacora": self._abrir_bitacora,
+            "respaldo": self._abrir_respaldo,
             "segundoFactor": self._abrir_segundo_factor,
             "contrasena": lambda: self._abrir_hoja("contrasena", ControladorContrasena(self)),
             "tema": self._alternar_tema,
@@ -733,6 +754,12 @@ class VentanaPrincipal(QMainWindow):
             self._solo_admin("consultar la bitácora")
             return
         self._abrir_hoja("bitacora", ControladorBitacora(self))
+
+    def _abrir_respaldo(self) -> None:
+        if not self.sesion.es_admin:
+            self._solo_admin("exportar o restaurar el respaldo de la clave")
+            return
+        self._abrir_hoja("respaldo", ControladorRespaldo(self))
 
     def _solo_admin(self, que: str) -> None:
         avisos.info(

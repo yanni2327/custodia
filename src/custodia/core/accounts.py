@@ -467,9 +467,8 @@ def retirar_de_custodia(username: str) -> None:
     _assert_gestionable(username)
     for grupo in (config.ADMIN_GROUP, config.APP_GROUP):
         try:
-            win32net.NetLocalGroupDelMembers(config.SERVER, grupo, 3, [
-                {"domainandname": _calificado(username)}
-            ])
+            win32net.NetLocalGroupDelMembers(config.SERVER, grupo,
+                                             [_calificado(username)])
         except pywintypes.error as exc:
             if exc.winerror in _NO_ES_MIEMBRO:
                 continue
@@ -587,9 +586,8 @@ def quitar_de_grupo(grupo: str, username: str) -> None:
             "ser reconocible como cuenta de la aplicación y quedaría huérfana"
         )
     try:
-        win32net.NetLocalGroupDelMembers(config.SERVER, grupo, 3, [
-            {"domainandname": _calificado(username)}
-        ])
+        win32net.NetLocalGroupDelMembers(config.SERVER, grupo,
+                                         [_calificado(username)])
     except pywintypes.error as exc:
         raise AccountError(f"No se pudo quitar del grupo: {exc.strerror}") from exc
 

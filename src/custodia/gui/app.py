@@ -22,7 +22,7 @@ from PySide6.QtCore import QEvent, QObject, QSettings
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QWidget
 
-from ..core import accounts, audit, config, crypto, espacios
+from ..core import accounts, audit, config, crypto, espacios, respaldo
 from . import avisos, estilo, iconos
 from .login import DialogoIngreso
 from .sesion import arrancar_nucleo, detener_nucleo, hay_privilegios, raiz_lista
@@ -69,6 +69,22 @@ def _primer_arranque() -> bool:
     return _crear_primer_administrador()
 
 
+def _preparar_sin_clave() -> bool:
+    """
+    Falta `master.key`, pero el almacén ya tiene archivos cifrados.
+
+    No se genera otra clave: lo que se escribiera con ella se perdería al
+    restaurar el respaldo. Solo se asegura que alguien pueda entrar a hacerlo,
+    también en un equipo nuevo al que se copió el almacén.
+    """
+    try:
+        accounts.asegurar_grupos()
+    except Exception as exc:
+        avisos.error(None, "No se pudo preparar el equipo", str(exc))
+        return False
+    return _crear_primer_administrador()
+
+
 def _crear_primer_administrador() -> bool:
     """Pide una cuenta administradora, repitiendo hasta que Windows la acepte."""
     if any(c.es_admin for c in accounts.listar_usuarios()):
@@ -99,12 +115,19 @@ def _crear_primer_administrador() -> bool:
 
         try:
             accounts.crear_usuario(usuario.strip(), password, es_admin=True)
-            espacios.asegurar_espacio(usuario.strip())
-            return True
         except Exception as exc:
             # Lo más habitual: la contraseña no cumple la política del equipo.
             # Se vuelve a preguntar en vez de abortar todo el arranque.
             avisos.error(None, "No se pudo crear la cuenta", str(exc))
+            continue
+
+        # Aparte: la cuenta ya existe, así que volver a pedirla solo daría
+        # «ya existe». Se avisa y se sigue.
+        try:
+            espacios.asegurar_espacio(usuario.strip())
+        except Exception as exc:
+            avisos.advertencia(None, "La carpeta personal quedó incompleta", str(exc))
+        return True
 
 
 def _cargar_fuente() -> str:
@@ -205,7 +228,10 @@ def main() -> int:
         )
         return 1
 
-    if not raiz_lista() and not _primer_arranque():
+    if respaldo.clave_perdida():
+        if not _preparar_sin_clave():
+            return 1
+    elif not raiz_lista() and not _primer_arranque():
         return 1
 
     arrancar_nucleo()

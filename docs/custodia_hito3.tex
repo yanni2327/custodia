@@ -3,6 +3,7 @@
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
+\usepackage{float}
 \graphicspath{{./}{figuras/}}
 \usepackage{textcomp}
 \usepackage[table]{xcolor}
@@ -64,7 +65,7 @@ Electiva Específica}
 \maketitle
 
 \begin{abstract}
-Este documento presenta el informe final del proyecto Custodia, una aplicación de escritorio para Windows que cifra en reposo los archivos que gestiona y delega la autorización de cada operación al sistema operativo mediante cuentas locales, listas de control de acceso (ACL) sobre NTFS y suplantación de identidad. El diseño parte de un análisis de riesgos con MAGERIT v3 sobre diez activos y dieciséis riesgos, del que se derivan veintiún controles organizados según los modelos AAA y CIA. La implementación, en Python con interfaz Qt Quick, incorpora además verificación en dos pasos (TOTP) para el ingreso y para toda operación sensible, bloqueo por intentos fallidos y por inactividad, y control de la exportación de copias. Se validó con 137 pruebas automatizadas ejecutadas sobre Windows real, de las cuales 136 pasan y una se omite; se cumplen seis de los ocho requisitos no funcionales medidos, y quedan pendientes la cobertura de pruebas, la prueba de usabilidad y el respaldo de la clave maestra. El documento incluye el marco teórico y legal, los diseños conceptual y lógico, la descripción de la implementación, el manual de usuario, los resultados y las recomendaciones.
+Este documento presenta el informe final del proyecto Custodia, una aplicación de escritorio para Windows que cifra en reposo los archivos que gestiona y delega la autorización de cada operación al sistema operativo mediante cuentas locales, listas de control de acceso (ACL) sobre NTFS y suplantación de identidad. El diseño parte de un análisis de riesgos con MAGERIT v3 sobre diez activos y dieciséis riesgos, del que se derivan veintiún controles organizados según los modelos AAA y CIA. La implementación, en Python con interfaz Qt Quick, incorpora además verificación en dos pasos (TOTP) para el ingreso y para toda operación sensible, bloqueo por intentos fallidos y por inactividad, y control de la exportación de copias. Incluye además el respaldo cifrado y la recuperación de la clave maestra. Se validó con 262 pruebas automatizadas ejecutadas sobre Windows real, de las cuales 261 pasan y una se omite, con una cobertura del núcleo del 90~\%; esas pruebas encontraron dos defectos reales, que se corrigieron. Se cumplen seis de los ocho requisitos no funcionales, uno se cumple en parte y queda pendiente la prueba de usabilidad. El documento incluye el marco teórico y legal, los diseños conceptual y lógico, la descripción de la implementación, el manual de usuario, los resultados y las recomendaciones.
 \end{abstract}
 
 {\renewcommand{\IEEEkeywordsname}{Palabras clave}
@@ -74,7 +75,7 @@ análisis de riesgos, MAGERIT, cifrado en reposo, AES-256-GCM, control de acceso
 
 \begin{otherlanguage}{english}
 \begin{abstract}
-This paper presents the final report of the Custodia project, a Windows desktop application that encrypts the files it manages at rest and delegates the authorization of every operation to the operating system through local accounts, NTFS access control lists (ACL) and identity impersonation. The design is based on a MAGERIT v3 risk analysis of ten assets and sixteen risks, from which twenty-one controls are derived and organized according to the AAA and CIA models. The implementation, written in Python with a Qt Quick interface, also adds two-step verification (TOTP) for login and for every sensitive operation, lockout after failed attempts and after inactivity, and control over exported copies. It was validated with 137 automated tests run on real Windows, of which 136 pass and one is skipped; six of the eight measured non-functional requirements are met, while test coverage, the usability test and the master key backup remain pending. The paper includes the theoretical and legal framework, the conceptual and logical designs, the implementation, the user manual, the results and the recommendations.
+This paper presents the final report of the Custodia project, a Windows desktop application that encrypts the files it manages at rest and delegates the authorization of every operation to the operating system through local accounts, NTFS access control lists (ACL) and identity impersonation. The design is based on a MAGERIT v3 risk analysis of ten assets and sixteen risks, from which twenty-one controls are derived and organized according to the AAA and CIA models. The implementation, written in Python with a Qt Quick interface, also adds two-step verification (TOTP) for login and for every sensitive operation, lockout after failed attempts and after inactivity, and control over exported copies. It also includes an encrypted backup and recovery of the master key. It was validated with 262 automated tests run on real Windows, of which 261 pass and one is skipped, with 90\% coverage of the core; those tests found two real defects, which were fixed. Six of the eight non-functional requirements are met, one is partially met, and the usability test remains pending. The paper includes the theoretical and legal framework, the conceptual and logical designs, the implementation, the user manual, the results and the recommendations.
 \end{abstract}
 \begin{IEEEkeywords}
 risk analysis, MAGERIT, encryption at rest, AES-256-GCM, access control, NTFS, impersonation, TOTP, forensic auditing, AAA, CIA
@@ -92,12 +93,13 @@ risk analysis, MAGERIT, encryption at rest, AES-256-GCM, access control, NTFS, i
 \textbf{Resultados.}
 \begin{itemize}
     \item Aplicación completa con interfaz gráfica y ejecutable único para Windows (\texttt{Custodia.exe}).
-    \item 137 pruebas automatizadas sobre Windows real: 136 pasan y una se omite. La prueba central demuestra que una denegación proviene del núcleo de Windows y no del código de la aplicación.
+    \item 262 pruebas automatizadas sobre Windows real: 261 pasan y una se omite, con 90~\% de cobertura del núcleo. La prueba central demuestra que una denegación proviene del núcleo de Windows y no del código de la aplicación.
+    \item Respaldo cifrado de la clave maestra, que elimina el punto único de fallo del cifrado.
     \item Rendimiento holgado: 49,5~ms por operación de 10~MB (límite: 500~ms) y 14,8~ms de sobrecarga del cifrado (límite: 200~ms).
     \item Ningún riesgo crítico residual; el único crítico del análisis, que un usuario lea archivos de otro, baja de 16 a 4.
 \end{itemize}
 
-\textbf{Pendientes.} Respaldo de la clave maestra, cobertura de pruebas del núcleo (73~\% frente al 80~\% exigido), prueba de usabilidad y prueba del ejecutable en un equipo limpio.
+\textbf{Pendientes.} Prueba de usabilidad con dos personas ajenas al proyecto, restauración del respaldo en un segundo equipo físico y prueba del ejecutable en un equipo limpio.
 
 %======================================================================
 \section{Introducción y objetivos}
@@ -400,7 +402,7 @@ R7 & Alteración o borrado de la bitácora & A.3 & A03 & 3 & 4 & \A 12 & Bitáco
 \hline
 R8 & Modificación de un archivo cifrado en disco & A.15 & A01 & 2 & 4 & \M 8 & Etiqueta de autenticación GCM: la alteración se detecta y el archivo se rechaza. & 2 & 2 & \B 4 \\
 \hline
-R9 & Pérdida o corrupción de la clave maestra & E.18 & A02, A01 & 2 & 5 & \A 10 & Respaldo de la clave (C13): \textbf{no implementado}; el riesgo se mantiene. & 2 & 5 & \A 10 \\
+R9 & Pérdida o corrupción de la clave maestra & E.18 & A02, A01 & 2 & 5 & \A 10 & Respaldo cifrado con contraseña de recuperación, verificado contra el almacén antes de instalarse (C13). & 1 & 5 & \M 5 \\
 \hline
 R10 & Abuso de privilegios por un administrador de Custodia & A.6 & A01, A05 & 2 & 4 & \M 8 & Separación en dos grupos; código TOTP y registro en bitácora de toda operación administrativa. & 2 & 3 & \M 6 \\
 \hline
@@ -469,7 +471,7 @@ Cada riesgo se evaluó dos veces: el riesgo \textit{potencial}, suponiendo una a
 \hline
 \textbf{I $\backslash$ P} & \textbf{1} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5} \\
 \hline
-\textbf{5}\rule[-2.4ex]{0pt}{6ex} & \M R3, R5 & \A R1, R6, R9 & \A & \C & \C \\
+\textbf{5}\rule[-2.4ex]{0pt}{6ex} & \M R3, R5, R9 & \A R1, R6 & \A & \C & \C \\
 \hline
 \textbf{4}\rule[-2.4ex]{0pt}{6ex} & \B R2, R4, R15 & \M R7, R14, R16 & \A & \C & \C \\
 \hline
@@ -486,12 +488,12 @@ Cada riesgo se evaluó dos veces: el riesgo \textit{potencial}, suponiendo una a
 
 \textit{Hallazgos.}
 \begin{itemize}
-    \item \textbf{Del riesgo potencial al residual.} De los dieciséis riesgos, uno era crítico (R2), once altos y cuatro medios. Con los controles implementados no queda ninguno crítico: tres permanecen altos, siete quedan en nivel medio y seis en nivel bajo.
+    \item \textbf{Del riesgo potencial al residual.} De los dieciséis riesgos, uno era crítico (R2), once altos y cuatro medios. Con los controles implementados no queda ninguno crítico: dos permanecen altos, ocho quedan en nivel medio y seis en nivel bajo.
     \item \textbf{El único riesgo crítico es el que motiva el proyecto.} R2 baja de 16 a 4 porque la decisión de autorizar deja de depender del código de la aplicación.
     \item \textbf{El segundo factor fue el control de mayor efecto añadido en la implementación.} Reduce a nivel bajo el ingreso con credenciales robadas (R4) y el uso de una sesión desatendida (R15), y hace atribuible cada operación sensible (R12).
     \item \textbf{El cifrado de archivos no basta frente al robo del disco completo (R1).} DPAPI en ámbito de máquina protege la clave con secretos que residen en el mismo disco. Un atacante que solo obtiene los archivos del almacén no puede leerlos, pero uno con el disco completo y conocimientos avanzados podría reconstruir la clave. El control compensatorio es el cifrado de volumen (BitLocker con TPM).
     \item \textbf{Un proceso con privilegios de administrador puede obtener la clave (R6).} Es una limitación inherente a un diseño local y se declara como riesgo residual aceptado. El cifrado por usuario (C20) lo reduciría, pero está desactivado por defecto.
-    \item \textbf{La clave maestra sigue siendo un punto único de fallo (R9).} El respaldo de la clave no se implementó, por lo que este riesgo conserva su nivel alto y es la primera recomendación de este informe.
+    \item \textbf{La clave maestra dejó de ser un punto único de fallo (R9).} El respaldo cifrado (C13) permite recuperarla, incluso en otro equipo, por lo que este riesgo baja de alto a medio. Los dos riesgos altos que quedan son inherentes a un diseño local.
 \end{itemize}
 
 \begin{table*}[!t]
@@ -528,7 +530,7 @@ C11 & Integridad & Escritura atómica & Escritura en un temporal de la misma car
 \hline
 C12 & Integridad & Protección de la bitácora & ACL sobre \texttt{audit.db} que excluye a los usuarios estándar; el visor es de solo lectura. & R7 & Implementado \\
 \hline
-C13 & Disponibilidad & Respaldo de la clave maestra & Copia protegida de la clave y procedimiento documentado de recuperación. & R9 & Pendiente \\
+C13 & Disponibilidad & Respaldo de la clave maestra & Clave cifrada con una contraseña de recuperación (scrypt y AES-256-GCM); restauración verificada contra el almacén y confirmada con TOTP. & R9 & Implementado \\
 \hline
 C14 & Disponibilidad & Arranque verificado & Al iniciar se comprueban privilegios, almacén, clave y bitácora; en un equipo nuevo se preparan y se crea la primera cuenta administradora. & R9, R14 & Implementado \\
 \hline
@@ -725,6 +727,8 @@ La aplicación sigue la arquitectura de la Fig.~\ref{fig:logico}. El núcleo (\t
     \item \textbf{Escritura atómica.} El contenido va a un archivo temporal en la misma carpeta y se renombra al final; una operación denegada no deja archivos parciales.
     \item \textbf{Comprobaciones lentas en otro hilo.} \texttt{LogonUser} tarda a propósito cuando las credenciales fallan; el ingreso y el desbloqueo se comprueban en un hilo aparte para no congelar la interfaz.
     \item \textbf{Una sola puerta para las operaciones sensibles.} Eliminar, añadir, renombrar, exportar, cambiar permisos y administrar cuentas pasan por un único método que exige el código TOTP y registra el intento.
+    \item \textbf{Un respaldo que sirve en otro equipo.} El archivo protegido con DPAPI solo se abre en el equipo que lo creó, así que no sirve como respaldo. El módulo \texttt{respaldo} descifra la clave con la identidad de la aplicación y la vuelve a cifrar con una contraseña de recuperación de al menos 12 caracteres, derivada con scrypt~\cite{rfc7914} y cifrada con AES-256-GCM, en un archivo de 88 bytes cuya cabecera completa está autenticada. Antes de instalar una clave restaurada se comprueba que abra archivos del almacén, y la anterior se conserva 30 días, como recomienda NIST SP~800-57 para las claves de cuya pérdida dependen los datos~\cite{sp80057}.
+    \item \textbf{Privilegios solo durante la operación.} Asignar como propietaria de su carpeta a otra cuenta exige el privilegio \texttt{SeRestorePrivilege}. El proceso lo activa solo durante esa llamada y lo desactiva siempre al terminar.
 \end{itemize}
 
 \subsection{Cambios respecto al diseño del Hito 2}
@@ -732,7 +736,8 @@ La aplicación sigue la arquitectura de la Fig.~\ref{fig:logico}. El núcleo (\t
     \item \textbf{Bloqueo por intentos propio (C2).} El diseño confiaba en la política de bloqueo de Windows, que suele estar desactivada fuera de un dominio y no cubre los códigos TOTP. Se implementó un bloqueo propio.
     \item \textbf{Controles nuevos (C17 a C21).} Verificación en dos pasos, bloqueo por inactividad, control de la exportación, cifrado por usuario y salvaguardas de administración, con sus requisitos RF-09 a RF-13.
     \item \textbf{Cifrado por usuario opcional (C20).} Impide que un administrador sin la contraseña del dueño lea el contenido, pero restablecer la contraseña de una persona le hace perder el acceso a sus archivos. Por esa consecuencia se dejó desactivado por defecto.
-    \item \textbf{Controles no implementados.} El respaldo de la clave (C13) y el encadenamiento de la bitácora (C16) quedaron fuera de la versión final.
+    \item \textbf{Respaldo de la clave (C13).} Planificado en el Hito 2, se implementó al cierre del proyecto.
+    \item \textbf{Control no implementado.} El encadenamiento de la bitácora (C16) quedó como trabajo futuro.
     \item \textbf{Asimetría declarada.} Cambiar permisos lo autoriza Windows, porque se hace bajo suplantación y exige el derecho WRITE\_DAC. Administrar cuentas, en cambio, lo autoriza la aplicación: crear una cuenta exige que el proceso esté elevado, sea quien sea el que inició sesión.
 \end{itemize}
 
@@ -747,7 +752,7 @@ El código fuente, las pruebas y este informe están publicados en el repositori
 \begin{itemize}
     \item \texttt{src/custodia/core/}: núcleo. Un módulo por responsabilidad (Fig.~\ref{fig:logico}); los dos \textit{backends} de permisos, el real de Windows y uno en memoria para pruebas, en \texttt{backends/}.
     \item \texttt{src/custodia/gui/}: interfaz. Controladores en Python, vistas en \texttt{qml/} y recursos (tipografía e icono) en \texttt{recursos/}.
-    \item \texttt{tests/}: dieciséis archivos de pruebas, uno por área.
+    \item \texttt{tests/}: veintiún archivos de pruebas, uno por área.
     \item \texttt{scripts/}: inicialización para desarrollo (\texttt{bootstrap.py}), prueba de viabilidad de la suplantación, lanzador de la interfaz y generador del icono.
     \item \texttt{custodia.spec}: receta de empaquetado.
 \end{itemize}
@@ -822,6 +827,11 @@ Desde \textbf{Cuentas y grupos} (Fig.~\ref{fig:cuentas}) un administrador puede:
 \subsection{Bitácora (administradores)}
 La hoja \textbf{Bitácora de auditoría} (Fig.~\ref{fig:bitacora}) muestra los eventos agrupados por día y permite buscar por usuario, recurso o detalle, y filtrar por \textbf{Usuario}, \textbf{Operación}, \textbf{Fecha} (con un calendario que marca los días con actividad) y por resultado: \textbf{Todos}, \textbf{Denegados} o \textbf{Permitidos}. Al elegir un evento se ven todos sus datos. Es de solo lectura: no hay forma de editar ni borrar registros desde la aplicación.
 
+\subsection{Respaldo de la clave (administradores)}
+Si la clave maestra se pierde o se daña, los archivos cifrados no se pueden abrir, por eso conviene exportar un respaldo apenas se instale Custodia. En el perfil, abra \textbf{Respaldo de la clave} y elija \textbf{Exportar respaldo}: escriba dos veces una contraseña de recuperación de al menos 12 caracteres, elija dónde guardar el archivo \texttt{.custodiakey} (idealmente una USB; Custodia no permite guardarlo en el almacén ni junto a la clave) y confirme con el código de verificación. Quien tenga el archivo y su contraseña puede descifrar todos los archivos: guárdelos en lugares distintos.
+
+Para recuperar la clave, entre con una cuenta administradora y use \textbf{Restaurar respaldo}: elija el archivo, escriba la contraseña y confirme con el código. Antes de instalarla, Custodia comprueba que la clave abra los archivos del almacén. Si falta la clave pero hay archivos cifrados, Custodia arranca igual, no genera una clave nueva y deja entrar a un administrador para restaurarla.
+
 \subsection{Bloqueo y cierre de sesión}
 Tras 5 minutos sin usar el ratón ni el teclado, o al pulsar Ctrl+L, la ventana se cubre con la pantalla de bloqueo, que muestra la hora y pide su contraseña (Fig.~\ref{fig:bloqueo}). Pulse \textbf{Desbloquear} para continuar o \textbf{Cerrar sesión} para salir. Si permanece bloqueada 30 minutos más, la sesión se cierra. La aplicación permite además cambiar la propia contraseña, alternar entre tema claro y oscuro y cerrar la sesión.
 
@@ -833,7 +843,7 @@ Tras 5 minutos sin usar el ratón ni el teclado, o al pulsar Ctrl+L, la ventana 
 Las pruebas se ejecutan sobre Windows real, no sobre simulaciones: crean cuentas locales temporales, escriben ACL reales y las eliminan al terminar. La prueba central del proyecto (\texttt{test\_el\_kernel\_deniega\_el\_acceso}) suplanta a una cuenta sin permisos e intenta leer un archivo; pasa solo si el rechazo lo emite el núcleo de Windows. Su contraparte comprueba que, al conceder el permiso, la misma operación funciona.
 
 \subsection{Suite de pruebas}
-La suite tiene 112 funciones de prueba en dieciséis archivos; con los casos parametrizados suman 137 pruebas, de las cuales 136 pasan y una se omite (Tabla~\ref{tab:suite}).
+La suite tiene 219 funciones de prueba en veintiún archivos; con los casos parametrizados suman 262 pruebas, de las cuales 261 pasan y una se omite (Tabla~\ref{tab:suite}). La cobertura del núcleo, medida con \texttt{pytest-cov}, es del 90~\%.
 
 \begin{table}[!htb]
 \caption{Pruebas automatizadas por área}
@@ -844,6 +854,16 @@ La suite tiene 112 funciones de prueba en dieciséis archivos; con los casos par
 \begin{tabular}{|>{\scriptsize}p{2.95cm}|c|p{3.75cm}|}
 \hline
 \textbf{Archivo} & \textbf{N.º} & \textbf{Qué verifica} \\
+\hline
+\texttt{test\_respaldo} & 30 & Respaldo de la clave: ida y vuelta, contraseña incorrecta, archivo alterado, solo administradores, la clave nunca en claro. \\
+\hline
+\texttt{test\_fsops} & 28 & Operaciones sobre archivos bajo suplantación real: listar, mover, copiar, buscar sin revelar lo vetado. \\
+\hline
+\texttt{test\_cuentas\_\allowbreak windows} & 28 & Ciclo de vida real de cuentas y grupos de Windows; incorporar y retirar. \\
+\hline
+\texttt{test\_segundo\-factor} & 11 & Secretos TOTP con DPAPI y ACL reales; fallo cerrado ante blobs dañados o ajenos. \\
+\hline
+\texttt{test\_auth} & 10 & Sesiones: tokens, expiración, cuentas deshabilitadas, sin enumeración de cuentas. \\
 \hline
 \texttt{test\_impersonation} & 10 & El núcleo deniega y permite; la identidad se restaura ante excepciones; hilos independientes. \\
 \hline
@@ -881,10 +901,18 @@ La suite tiene 112 funciones de prueba en dieciséis archivos; con los casos par
 \end{table}
 
 \subsection{Requisitos funcionales}
-Los trece requisitos funcionales están implementados. Todos excepto RF-11 tienen al menos una prueba automatizada que los verifica (Tabla~\ref{tab:suite}): RF-01 y RF-02 en \texttt{test\_accounts} y \texttt{test\_grupos\_gui}; RF-03 en \texttt{test\_impersonation}; RF-04 en \texttt{test\_jail}; RF-05 en \texttt{test\_audit}; RF-06 y RF-07 en \texttt{test\_permissions}; RF-08 en \texttt{test\_crypto}; RF-09 en \texttt{test\_totp} y \texttt{test\_confirmacion}; RF-10 en \texttt{test\_seguridad}; RF-12 en \texttt{test\_descargas} y \texttt{test\_confirmacion}; y RF-13 en \texttt{test\_alcance}. El bloqueo por inactividad (RF-11) depende de eventos de la interfaz y no tiene prueba automatizada.
+Los trece requisitos funcionales están implementados. Todos excepto RF-11 tienen al menos una prueba automatizada que los verifica (Tabla~\ref{tab:suite}): RF-01 y RF-02 en \texttt{test\_accounts}, \texttt{test\_cuentas\_windows} y \texttt{test\_grupos\_gui}; RF-03 en \texttt{test\_impersonation} y \texttt{test\_fsops}; RF-04 en \texttt{test\_jail}; RF-05 en \texttt{test\_audit}; RF-06 y RF-07 en \texttt{test\_permissions}; RF-08 en \texttt{test\_crypto}; RF-09 en \texttt{test\_totp}, \texttt{test\_segundofactor} y \texttt{test\_confirmacion}; RF-10 en \texttt{test\_seguridad}; RF-12 en \texttt{test\_descargas} y \texttt{test\_confirmacion}; y RF-13 en \texttt{test\_alcance}. El bloqueo por inactividad (RF-11) depende de eventos de la interfaz y no tiene prueba automatizada.
+
+\subsection{Defectos encontrados por las pruebas}
+Las pruebas que llevaron la cobertura del 73~\% al 90~\% se escribieron contra Windows real y no contra simulaciones. Encontraron dos defectos que las pruebas anteriores no detectaban:
+\begin{enumerate}
+    \item \textbf{Quitar de un grupo y retirar una cuenta fallaban.} La llamada a \texttt{NetLocalGroupDelMembers} pasaba cuatro argumentos y \texttt{pywin32} acepta tres. Las pruebas anteriores de grupos reemplazaban esa función por un doble, por lo que el error nunca se manifestó en ellas.
+    \item \textbf{La cuenta no quedaba como propietaria de su espacio.} Asignar otra cuenta como propietaria exige \texttt{SeRestorePrivilege} habilitado, y el error se ocultaba sin registro. Ahora el privilegio se activa solo durante la operación, y un fallo se registra en la bitácora.
+\end{enumerate}
+Ambos se corrigieron y el ejecutable se reconstruyó con las correcciones. El hallazgo confirma la decisión de probar sobre el sistema operativo real: un doble de prueba solo verifica lo que quien lo escribe supone que hace Windows.
 
 \subsection{Requisitos no funcionales}
-La Tabla~\ref{tab:rnfres} presenta las mediciones. Se cumplen seis de los ocho requisitos; RNF-06 no se cumple y RNF-04 queda pendiente.
+La Tabla~\ref{tab:rnfres} presenta las mediciones. Se cumplen seis de los ocho requisitos; RNF-07 se cumple en parte y RNF-04 queda pendiente.
 
 \begin{table}[!htb]
 \caption{Resultados de los requisitos no funcionales}
@@ -906,9 +934,9 @@ RNF-04 & $\leq$ 3 pasos, 2 personas & Sin realizar & Pendiente \\
 \hline
 RNF-05 & 0 archivos parciales en 50 denegaciones & 0 & Cumple \\
 \hline
-RNF-06 & Cobertura $\geq$ 80 \% & 73 \% & No cumple \\
+RNF-06 & Cobertura $\geq$ 80 \% & 90 \% & Cumple \\
 \hline
-RNF-07 & Ejecutable único sin Python & Construido (170 MB); falta probarlo en equipo limpio & Cumple en parte \\
+RNF-07 & Ejecutable único sin Python & Construido (170 MB) con las últimas correcciones; falta probarlo en equipo limpio & Cumple en parte \\
 \hline
 RNF-08 & Sobrecarga $\leq$ 200 ms; clave no en claro & 14,8 ms; clave no aparece & Cumple \\
 \hline
@@ -944,7 +972,7 @@ V7 & Un byte alterado hace fallar el descifrado (\texttt{test\_crypto}). & Mitig
 \hline
 V8 & El usuario suplantado no escribe la bitácora (\texttt{test\_audit}); un administrador sí puede (R7). & Mitigado en parte \\
 \hline
-V9 & Sin respaldo de la clave (C13). & No mitigado \\
+V9 & Respaldo exportable y restauración verificada (\texttt{test\_respaldo}); falta probarla en un segundo equipo físico. & Mitigado \\
 \hline
 V10 & Sin servicio de red; no se probó un ataque de carga de bibliotecas. & Sin prueba \\
 \hline
@@ -965,14 +993,15 @@ V12 & Límite de copias por usuario (\texttt{test\_descargas}). & Mitigado \\
     \item \textbf{Delegar la autorización eliminó el riesgo más alto del caso.} El acceso de un usuario a archivos ajenos pasó de crítico a bajo sin escribir una sola regla de permisos en la aplicación.
     \item \textbf{La implementación reveló riesgos que el diseño no veía.} La sesión desatendida y la exportación de copias legibles (R15, R16) aparecieron al usar la aplicación, no en el papel, y motivaron cinco requisitos nuevos. El análisis de riesgos resultó ser un proceso continuo y no un entregable cerrado.
     \item \textbf{El rendimiento no fue una restricción.} Suplantar y cifrar en cada operación cuesta decenas de milisegundos, un orden de magnitud por debajo de los límites fijados.
-    \item \textbf{Quedan tres riesgos altos.} Dos son inherentes a un diseño local (R1, R6) y uno se debe a un control no implementado (R9).
+    \item \textbf{Probar contra el sistema real encontró lo que las simulaciones ocultaban.} Dos defectos de administración de cuentas solo aparecieron cuando las pruebas usaron Windows de verdad.
+    \item \textbf{Quedan dos riesgos altos, inherentes a un diseño local.} El robo del disco completo (R1) y un administrador local que pida la clave a DPAPI (R6). El respaldo de la clave bajó R9 a nivel medio.
 \end{itemize}
 
 \subsection{Recomendaciones}
 \begin{enumerate}
-    \item Implementar el respaldo de la clave maestra y su procedimiento de recuperación~\cite{sp80057} antes de cualquier uso con información real: es el único riesgo alto que depende de trabajo pendiente.
+    \item Exportar el respaldo de la clave apenas se instale Custodia, guardar el archivo y su contraseña en lugares distintos, y probar la restauración en un segundo equipo físico~\cite{sp80057}.
     \item Desplegar el equipo anfitrión con BitLocker y TPM para cubrir el robo del disco completo (R1).
-    \item Subir la cobertura del núcleo al 80~\% y realizar la prueba de usabilidad con dos personas ajenas al desarrollo.
+    \item Realizar la prueba de usabilidad con dos personas ajenas al desarrollo (RNF-04).
     \item Probar el ejecutable en un equipo limpio y reducir su tamaño excluyendo los módulos de Qt que no se usan.
     \item Encadenar los registros de la bitácora con SHA-256 (C16) y sincronizar el reloj del equipo, para que la bitácora sostenga valor probatorio.
     \item Evaluar con usuarios el cifrado por usuario (C20): reduce el riesgo frente a administradores, pero exige un procedimiento para no perder archivos al restablecer contraseñas.
@@ -1052,11 +1081,11 @@ La Tabla~\ref{tab:traza} relaciona cada requisito funcional con los controles qu
 \hline
 \textbf{Req.} & \textbf{Controles} & \textbf{Pruebas} \\
 \hline
-RF-01 & C1, C21 & \texttt{test\_accounts} \\
+RF-01 & C1, C21 & \texttt{test\_accounts}, \texttt{test\_cuentas\_windows} \\
 \hline
 RF-02 & C4, C21 & \texttt{test\_accounts}, \texttt{test\_grupos\_gui} \\
 \hline
-RF-03 & C3, C6, C11 & \texttt{test\_impersonation}, \texttt{test\_rnf} \\
+RF-03 & C3, C6, C11 & \texttt{test\_impersonation}, \texttt{test\_fsops}, \texttt{test\_rnf} \\
 \hline
 RF-04 & C5 & \texttt{test\_jail} \\
 \hline
@@ -1068,7 +1097,7 @@ RF-07 & C3 & \texttt{test\_permissions} \\
 \hline
 RF-08 & C8, C9, C10 & \texttt{test\_crypto} \\
 \hline
-RF-09 & C17 & \texttt{test\_totp}, \texttt{test\_confirmacion} \\
+RF-09 & C17 & \texttt{test\_totp}, \texttt{test\_segundofactor}, \texttt{test\_confirmacion} \\
 \hline
 RF-10 & C2 & \texttt{test\_seguridad} \\
 \hline
@@ -1078,6 +1107,10 @@ RF-12 & C19 & \texttt{test\_descargas}, \texttt{test\_confirmacion} \\
 \hline
 RF-13 & C4 & \texttt{test\_alcance} \\
 \hline
+C13\,$^{*}$ & C13 & \texttt{test\_respaldo} \\
+\hline
+\multicolumn{3}{|l|}{\scriptsize $^{*}$ Control sin requisito funcional propio: respaldo de la clave maestra.} \\
+\hline
 \end{tabular}
 \end{table}
 
@@ -1085,33 +1118,33 @@ RF-13 & C4 & \texttt{test\_alcance} \\
 \label{anx:capturas}
 Las Figs.~\ref{fig:cuentas} a~\ref{fig:motivo} complementan las del manual de usuario (Sección~\ref{sec:manual}). Se tomaron con cuentas de prueba creadas por las autoras.
 
-\begin{figure*}[!htb]
+\begin{figure}[H]
 \centering
-\begin{minipage}[t]{0.485\textwidth}\centering
-\includegraphics[width=\linewidth]{figuras/cuentas.png}
+\includegraphics[width=\columnwidth]{figuras/cuentas.png}
 \caption{Hoja de cuentas y grupos. Cada cuenta indica su rol, si es una cuenta de Windows incorporada y si tiene la verificación en dos pasos activa.}
 \label{fig:cuentas}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.485\textwidth}\centering
-\includegraphics[width=\linewidth]{figuras/bitacora.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figuras/bitacora.png}
 \caption{Bitácora de auditoría filtrada por eventos denegados, con el detalle de un inicio de sesión rechazado porque la cuenta debía cambiar su contraseña.}
 \label{fig:bitacora}
-\end{minipage}
-\end{figure*}
+\end{figure}
 
-\begin{figure*}[!htb]
+\begin{figure}[H]
 \centering
-\begin{minipage}[t]{0.485\textwidth}\centering
-\includegraphics[width=\linewidth]{figuras/bloqueo.png}
+\includegraphics[width=\columnwidth]{figuras/bloqueo.png}
 \caption{Pantalla de bloqueo por inactividad.}
 \label{fig:bloqueo}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.485\textwidth}\centering
-\includegraphics[width=\linewidth]{figuras/motivo.png}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\columnwidth]{figuras/motivo.png}
 \caption{Motivo obligatorio antes de exportar una copia; queda registrado en la bitácora.}
 \label{fig:motivo}
-\end{minipage}
-\end{figure*}
+\end{figure}
 
 \section{Cronología de la implementación}
 \label{anx:cronologia}
@@ -1135,6 +1168,8 @@ La Tabla~\ref{tab:crono} reconstruye las etapas a partir de la fecha de última 
 5 nov. 2026 & Interfaz completa en QML; verificación en dos pasos y confirmación de operaciones; contraseñas temporales; gestión de grupos; bloqueo por inactividad. \\
 \hline
 6 nov. 2026 & Icono, receta de empaquetado, ejecutable \texttt{Custodia.exe} y documentación. \\
+\hline
+9 nov. 2026 & Respaldo y recuperación de la clave maestra (C13); pruebas nuevas que llevan la cobertura al 90~\%; corrección de los dos defectos que encontraron; nuevo ejecutable. \\
 \hline
 \end{tabular}
 \end{table}

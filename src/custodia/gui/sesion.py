@@ -27,11 +27,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core import (accounts, acl, audit, auth, boveda, config, crypto,
-                    descargas, espacios, fsops, jail, seguridad, segundofactor)
+                    descargas, espacios, fsops, jail, respaldo, seguridad,
+                    segundofactor)
 from ..core.backends.windows import BackendWindows
 from ..core.errors import (AccountError, AuthenticationError,
-                           CambioDeContrasenaRequerido, CustodiaError,
-                           PermissionDenied, SegundoFactorRequerido)
+                           CambioDeContrasenaRequerido, CryptoError,
+                           CustodiaError, PermissionDenied, RespaldoError,
+                           SegundoFactorRequerido)
 from ..core.fsops import NodoInfo
 from ..core.impersonate import impersonate
 from ..core.permissions import Accion, Sujeto
@@ -518,6 +520,8 @@ class Sesion:
         if (config.CIFRADO_POR_USUARIO and self.privada is not None
                 and boveda.es_v2(blob)):
             return boveda.descifrar(blob, self.username, self.privada)
+        if crypto.esta_cifrado(blob):
+            self._exigir_clave_maestra()
         return crypto.descifrar(blob)
 
     def escribir(self, ruta_virtual: str, datos: bytes,
@@ -533,8 +537,22 @@ class Sesion:
             with impersonate(self.token):
                 return fsops.escribir(ruta, blob, sobrescribir=sobrescribir,
                                       cifrar=False)
+        if config.CIFRADO_ACTIVO:
+            self._exigir_clave_maestra()
         with impersonate(self.token):
             return fsops.escribir(ruta, datos, sobrescribir=sobrescribir)
+
+    @staticmethod
+    def _exigir_clave_maestra() -> None:
+        """Con la clave dañada o ausente, un error que la persona pueda entender."""
+        try:
+            crypto.precargar_clave()
+        except CryptoError:
+            raise CryptoError(
+                "La clave maestra no está disponible. Un administrador debe "
+                "restaurar el respaldo desde «Respaldo de la clave», en el "
+                "menú de perfil."
+            ) from None
 
     def _destinatarios_para(self, ruta) -> dict:
         """
@@ -831,6 +849,68 @@ class Sesion:
         self._exigir_admin()
         return audit.consultar(solo_denegados=solo_denegados, limite=limite)
 
+    # -- respaldo de la clave maestra (C13) ---------------------------------
+    #
+    # Ninguno de estos métodos suplanta: la clave maestra y su archivo son de
+    # la aplicación, no del usuario. El código TOTP lo pide la ventana, con
+    # `_confirmar_con_codigo`, igual que en las demás operaciones sensibles.
+    #
+    # A la bitácora solo van textos fijos (`RespaldoError.motivo`) o el nombre
+    # de una clase de excepción, nunca `str(exc)`.
+
+    @staticmethod
+    def clave_disponible() -> bool:
+        """False si la aplicación arrancó con la clave maestra dañada o ausente."""
+        return crypto.clave_disponible()
+
+    def _exigir_admin_para(self, accion: str) -> None:
+        if not self.es_admin:
+            audit.registrar(self.username, accion, exito=False,
+                            detalle="la cuenta no es administradora")
+            raise PermissionError(
+                "Solo los administradores de Custodia pueden exportar o "
+                "restaurar el respaldo de la clave."
+            )
+
+    def _registrar_fallo_respaldo(self, accion: str, exc: Exception) -> None:
+        motivo = exc.motivo if isinstance(exc, RespaldoError) else type(exc).__name__
+        audit.registrar(self.username, accion, exito=False, detalle=motivo)
+
+    def exportar_respaldo_clave(self, password: str, destino: str | Path) -> None:
+        """Guarda la clave maestra cifrada con la contraseña de recuperación."""
+        self._exigir_admin_para("exportar_clave")
+        try:
+            respaldo.exportar(password, destino)
+        except Exception as exc:
+            self._registrar_fallo_respaldo("exportar_clave", exc)
+            raise
+        audit.registrar(self.username, "exportar_clave", exito=True,
+                        detalle=f"archivo: {Path(destino).name}")
+
+    def preparar_restauracion_clave(self, origen: str | Path,
+                                    password: str) -> respaldo.Restauracion:
+        """Descifra y verifica un respaldo sin escribir nada todavía."""
+        self._exigir_admin_para("restaurar_clave")
+        try:
+            return respaldo.preparar(origen, password)
+        except Exception as exc:
+            self._registrar_fallo_respaldo("restaurar_clave", exc)
+            raise
+
+    def aplicar_restauracion_clave(self, preparada: respaldo.Restauracion) -> None:
+        """Instala la clave ya verificada, tras la confirmación explícita."""
+        self._exigir_admin_para("restaurar_clave")
+        try:
+            respaldo.aplicar(preparada)
+        except Exception as exc:
+            self._registrar_fallo_respaldo("restaurar_clave", exc)
+            raise
+        comprobacion = ("verificada con el almacén" if preparada.verificada
+                        else "sin archivos con los que verificar")
+        efecto = "reemplazó la clave anterior" if preparada.reemplaza else "clave nueva"
+        audit.registrar(self.username, "restaurar_clave", exito=True,
+                        detalle=f"{comprobacion}; {efecto}")
+
 
 def arrancar_nucleo() -> None:
     """
@@ -841,9 +921,18 @@ def arrancar_nucleo() -> None:
     tiene permiso, así que ambas deben abrirse ahora, mientras el proceso
     conserva su identidad privilegiada. Después, dentro de las suplantaciones,
     solo se usan los recursos ya abiertos.
+
+    Una clave dañada o ausente no impide arrancar: si lo impidiera, ningún
+    administrador podría entrar a restaurar el respaldo (C13).
     """
     audit.init()
-    crypto.precargar_clave()
+    try:
+        crypto.precargar_clave()
+    except CryptoError:
+        audit.registrar("sistema", "clave_no_disponible", exito=False,
+                        detalle="modo de recuperación")
+    else:
+        crypto.purgar_copias_anteriores(config.RETENCION_COPIA_CLAVE_DIAS)
     # Se reescribe la lista de permisos de la raíz en cada arranque (idempotente
     # y barato). Así los almacenes creados con la regla anterior —que dejaba a
     # los usuarios listar la raíz y crear carpetas en ella— quedan corregidos

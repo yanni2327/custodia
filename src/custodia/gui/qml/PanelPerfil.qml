@@ -284,6 +284,46 @@ Item {
                 }
             }
 
+            // ---- respaldo de la clave (solo administradores) ---------------------
+            Item { width: 1; height: 6; visible: puente.esAdmin }
+            Rectangle {
+                id: filaRespaldo
+                visible: puente.esAdmin
+                x: 16
+                width: columna.width - 32
+                height: 46
+                radius: 12
+                color: zonaRespaldo.containsMouse ? Qt.alpha(T.ACENTO, oscuro ? 0.14 : 0.08) : (oscuro ? T.FONDO : T.ELEVADO)
+                border.color: zonaRespaldo.containsMouse ? Qt.alpha(T.ACENTO, 0.45) : "transparent"
+                Behavior on color { ColorAnimation { duration: 140 } }
+                Text {
+                    id: icoRespaldo
+                    x: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: ""
+                    font.family: iconos
+                    font.pixelSize: 16
+                    color: T.ACENTO
+                }
+                Text {
+                    anchors.left: icoRespaldo.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Respaldo de la clave"
+                    color: T.TINTA
+                    font.family: fuente
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
+                MouseArea {
+                    id: zonaRespaldo
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: panel.elegir("respaldo")
+                }
+            }
+
             // ---- salir -------------------------------------------------------------
             Item { width: 1; height: 16 }
             Rectangle { width: columna.width; height: 1; color: T.BORDE_SUAVE }

@@ -24,17 +24,29 @@ sería distinto del que muestra la interfaz.
 """
 from __future__ import annotations
 
+import contextlib
+import threading
 from dataclasses import dataclass
 from enum import IntFlag
 from pathlib import Path
+from typing import Iterator
 
 import ntsecuritycon as con
+import win32api
 import win32security
 import pywintypes
 
 from .errors import AccountError, NotFound, PermissionDenied
 
 _ERROR_ACCESS_DENIED = 5
+_ERROR_INVALID_OWNER = 1307     # el token no puede asignar a ese propietario
+
+#: Privilegio que permite poner como propietario a otra cuenta.
+_SE_RESTORE = "SeRestorePrivilege"
+
+#: El privilegio se activa en el token de todo el proceso: dos hilos no deben
+#: solaparse, o el primero en terminar se lo quitaría al otro a media operación.
+_lock_privilegio = threading.Lock()
 
 
 class Perm(IntFlag):
@@ -319,22 +331,45 @@ def propietario(ruta: Path) -> str:
     return _nombre_de(sd.GetSecurityDescriptorOwner())
 
 
+@contextlib.contextmanager
+def _con_privilegio(nombre: str) -> Iterator[None]:
+    """Habilita un privilegio del proceso solo mientras dura el bloque."""
+    token = win32security.OpenProcessToken(
+        win32api.GetCurrentProcess(),
+        win32security.TOKEN_ADJUST_PRIVILEGES | win32security.TOKEN_QUERY,
+    )
+    try:
+        luid = win32security.LookupPrivilegeValue(None, nombre)
+        with _lock_privilegio:
+            win32security.AdjustTokenPrivileges(
+                token, False, [(luid, win32security.SE_PRIVILEGE_ENABLED)])
+            try:
+                yield
+            finally:
+                win32security.AdjustTokenPrivileges(token, False, [(luid, 0)])
+    finally:
+        token.Close()
+
+
 def cambiar_propietario(ruta: Path, principal: str) -> None:
     """
     Cambia el propietario. Equivale a ``chown``.
 
-    Requiere el privilegio SeTakeOwnershipPrivilege o SeRestorePrivilege, que
-    tiene el servicio pero no un usuario normal.
+    Poner como propietario a OTRA cuenta exige SeRestorePrivilege habilitado.
+    Un proceso elevado lo tiene, pero deshabilitado: se activa solo para esta
+    llamada. Sin él, Windows responde con el error 1307. Se ejecuta con la
+    identidad de la aplicación, nunca bajo suplantación.
     """
     try:
-        win32security.SetNamedSecurityInfo(
-            str(Path(ruta)),
-            win32security.SE_FILE_OBJECT,
-            win32security.OWNER_SECURITY_INFORMATION,
-            _sid_de(principal),
-            None, None, None,
-        )
+        with _con_privilegio(_SE_RESTORE):
+            win32security.SetNamedSecurityInfo(
+                str(Path(ruta)),
+                win32security.SE_FILE_OBJECT,
+                win32security.OWNER_SECURITY_INFORMATION,
+                _sid_de(principal),
+                None, None, None,
+            )
     except pywintypes.error as exc:
-        if exc.winerror == _ERROR_ACCESS_DENIED:
+        if exc.winerror in (_ERROR_ACCESS_DENIED, _ERROR_INVALID_OWNER):
             raise PermissionDenied("Sin privilegios para cambiar el propietario") from exc
         raise
