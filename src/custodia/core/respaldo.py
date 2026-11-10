@@ -29,6 +29,7 @@ contraseña. Aquí no se escriben en disco ni en la bitácora; más no se promet
 """
 from __future__ import annotations
 
+import json
 import os
 import struct
 import unicodedata
@@ -41,12 +42,14 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
-from . import config, crypto
+from . import boveda, config, crypto
 from .errors import CryptoError, RespaldoError
 
 MAGIA = b"CUSTKEYB"
+MAGIA_IDENTIDADES = b"CUSTIDEN"
 VERSION = 1
 EXTENSION = ".custodiakey"
+SUFIJO_IDENTIDADES = ".identidades"
 LONGITUD_MINIMA = 12
 
 _CABECERA = struct.Struct("<8sBBBB16s12s")   # magia, versión, log2_n, r, p, sal, nonce
@@ -92,10 +95,12 @@ class Restauracion:
     un mensaje de depuración no puede filtrarla por accidente.
     """
 
-    __slots__ = ("_clave", "verificada", "reemplaza")
+    __slots__ = ("_clave", "_identidades", "verificada", "reemplaza")
 
-    def __init__(self, clave: bytes, verificada: bool, reemplaza: bool) -> None:
+    def __init__(self, clave: bytes, verificada: bool, reemplaza: bool,
+                 identidades: dict | None = None) -> None:
         self._clave = clave
+        self._identidades = identidades
         #: True si la clave abrió un archivo del almacén; False si no había
         #: ninguno con el que comprobarla.
         self.verificada = verificada
@@ -159,6 +164,37 @@ def abrir(datos: bytes, password: str) -> bytes:
     return clave
 
 
+def sellar_datos(magia: bytes, datos: bytes, password: str) -> bytes:
+    """Como `sellar`, para contenidos de cualquier tamaño y con otra magia."""
+    sal = os.urandom(16)
+    nonce = os.urandom(12)
+    cabecera = _CABECERA.pack(magia, VERSION, _LOG2_N, _R, _P, sal, nonce)
+    kek = _derivar(password, sal, _LOG2_N, _R, _P)
+    return cabecera + AESGCM(kek).encrypt(nonce, datos, cabecera)
+
+
+def abrir_datos(magia: bytes, datos: bytes, password: str) -> bytes:
+    """
+    Descifra lo que produjo `sellar_datos`.
+
+    :raises RespaldoError: formato no reconocido, contraseña incorrecta o
+        archivo alterado.
+    """
+    if len(datos) <= _CABECERA.size:
+        raise _no_reconocido()
+    cabecera = datos[:_CABECERA.size]
+    leida, version, log2_n, r, p, sal, nonce = _CABECERA.unpack(cabecera)
+    if leida != magia or version != VERSION:
+        raise _no_reconocido()
+    if log2_n not in _LOG2_N_RANGO or r not in _R_RANGO or p not in _P_RANGO:
+        raise _no_descifrable()
+    kek = _derivar(password, sal, log2_n, r, p)
+    try:
+        return AESGCM(kek).decrypt(nonce, datos[_CABECERA.size:], cabecera)
+    except InvalidTag:
+        raise _no_descifrable() from None
+
+
 def _archivos_v1() -> Iterator[Path]:
     """Archivos del almacén cifrados con la clave maestra y legibles."""
     for carpeta, _, nombres in os.walk(config.STORAGE_ROOT):
@@ -214,7 +250,7 @@ def verificar_contra_almacen(clave: bytes) -> bool:
     return False
 
 
-def _validar_destino(destino: Path) -> None:
+def validar_destino(destino: Path) -> None:
     """El respaldo no debe quedar junto a lo que protege."""
     resuelto = destino.resolve()
     prohibidas = (Path(config.STORAGE_ROOT).resolve(),
@@ -227,30 +263,11 @@ def _validar_destino(destino: Path) -> None:
         )
 
 
-def exportar(password: str, destino: Path | str) -> None:
+def escribir_verificado(destino: Path, contenido: bytes) -> None:
     """
-    Escribe el respaldo de la clave maestra en `destino`.
-
-    La escritura es atómica y al terminar se relee el archivo, para detectar
-    ahora, y no el día que haga falta, una USB que no guardó bien los datos.
+    Escritura atómica y relectura, para detectar ahora, y no el día que haga
+    falta, una USB que no guardó bien los datos.
     """
-    error = regla_contrasena(password)
-    if error:
-        raise RespaldoError(error, "contraseña de recuperación demasiado corta")
-
-    destino = Path(destino)
-    _validar_destino(destino)
-
-    try:
-        clave = crypto.clave_para_respaldo()
-    except CryptoError:
-        raise RespaldoError(
-            "La clave maestra de este equipo no está disponible, así que no se "
-            "puede respaldar. Restaura un respaldo anterior.",
-            "clave maestra no disponible",
-        ) from None
-    contenido = sellar(clave, password)
-
     temporal = destino.with_name(f"{destino.name}.{uuid.uuid4().hex}.tmp")
     try:
         with open(temporal, "wb") as f:
@@ -275,6 +292,40 @@ def exportar(password: str, destino: Path | str) -> None:
         )
 
 
+def _ruta_identidades(respaldo_clave: Path) -> Path:
+    return respaldo_clave.with_name(respaldo_clave.name + SUFIJO_IDENTIDADES)
+
+
+def exportar(password: str, destino: Path | str) -> None:
+    """
+    Escribe el respaldo de la clave maestra en `destino`.
+
+    Si hay cifrado por usuario, junto a él va una copia de las identidades:
+    sin `identidades.json`, los archivos v3 serían irrecuperables.
+    """
+    error = regla_contrasena(password)
+    if error:
+        raise RespaldoError(error, "contraseña de recuperación demasiado corta")
+
+    destino = Path(destino)
+    validar_destino(destino)
+
+    try:
+        clave = crypto.clave_para_respaldo()
+    except CryptoError:
+        raise RespaldoError(
+            "La clave maestra de este equipo no está disponible, así que no se "
+            "puede respaldar. Restaura un respaldo anterior.",
+            "clave maestra no disponible",
+        ) from None
+    escribir_verificado(destino, sellar(clave, password))
+
+    identidades = Path(config.BOVEDA_FILE)
+    if identidades.exists():
+        escribir_verificado(_ruta_identidades(destino), sellar_datos(
+            MAGIA_IDENTIDADES, identidades.read_bytes(), password))
+
+
 def preparar(origen: Path | str, password: str) -> Restauracion:
     """
     Descifra un respaldo y lo verifica, **sin escribir nada**.
@@ -295,9 +346,27 @@ def preparar(origen: Path | str, password: str) -> Restauracion:
 
     clave = abrir(datos, password)
     verificada = verificar_contra_almacen(clave)
-    return Restauracion(clave, verificada, Path(config.KEY_FILE).exists())
+
+    identidades = None
+    copia = _ruta_identidades(ruta)
+    if copia.exists():
+        contenido = abrir_datos(MAGIA_IDENTIDADES, copia.read_bytes(), password)
+        try:
+            identidades = json.loads(contenido)
+        except ValueError:
+            raise _no_descifrable() from None
+
+    return Restauracion(clave, verificada, Path(config.KEY_FILE).exists(), identidades)
 
 
 def aplicar(restauracion: Restauracion) -> Path | None:
-    """Instala la clave preparada. Devuelve la copia de la anterior, si la hubo."""
-    return crypto.instalar_clave_maestra(restauracion._clave)
+    """
+    Instala la clave preparada. Devuelve la copia de la anterior, si la hubo.
+
+    Las identidades solo se añaden si faltan: las que hay pueden ser más nuevas
+    que el respaldo.
+    """
+    copia = crypto.instalar_clave_maestra(restauracion._clave)
+    if restauracion._identidades:
+        boveda.fusionar_store(restauracion._identidades)
+    return copia

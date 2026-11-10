@@ -44,7 +44,7 @@ Item {
         width: 340
         height: columna.implicitHeight
         x: Math.max(8, panel.px - width)
-        y: panel.py
+        y: Math.max(8, Math.min(panel.py, panel.height - height - 8))
         radius: 18
         color: T.PANEL
         border.color: T.BORDE
@@ -229,13 +229,54 @@ Item {
             Item { width: 1; height: 14 }
             Rectangle { x: 20; width: columna.width - 40; height: 1; color: T.BORDE_SUAVE }
             Item { width: 1; height: 14 }
-            Text {
-                x: 20
-                text: puente.esAdmin ? "Administración" : "Administración (solo administradores)"
-                color: T.TINTA_MEDIA
-                font.family: fuente
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
+            Item {
+                width: columna.width
+                height: 18
+                readonly property string volumen: puente.perfil.volumen || ""
+                readonly property color tono: volumen === "protegido" ? T.VERDE
+                                            : volumen === "sin_proteger" ? "#D97706" : T.TINTA_TENUE
+                Text {
+                    x: 20
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: puente.esAdmin ? "Administración" : "Administración (solo administradores)"
+                    color: T.TINTA_MEDIA
+                    font.family: fuente
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    visible: parent.volumen !== ""
+                    anchors.right: parent.right
+                    anchors.rightMargin: 20
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: parent.volumen === "protegido" ? "Volumen protegido"
+                        : parent.volumen === "sin_proteger" ? "Volumen sin proteger"
+                        : "Volumen sin verificar"
+                    color: parent.tono
+                    font.family: fuente
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+            }
+            Item { width: 1; height: 8; visible: !!puente.perfil.volumenAviso }
+            Rectangle {
+                visible: !!puente.perfil.volumenAviso
+                x: 16
+                width: columna.width - 32
+                height: textoVolumen.implicitHeight + 16
+                radius: 10
+                color: Qt.alpha("#F59E0B", 0.13)
+                border.color: Qt.alpha("#F59E0B", 0.4)
+                Text {
+                    id: textoVolumen
+                    x: 10; y: 8
+                    width: parent.width - 20
+                    wrapMode: Text.WordWrap
+                    text: puente.perfil.volumenAviso || ""
+                    color: T.TINTA
+                    font.family: fuente
+                    font.pixelSize: 11
+                }
             }
             Item { width: 1; height: 10 }
             Row {

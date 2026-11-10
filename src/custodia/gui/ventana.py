@@ -266,6 +266,13 @@ class VentanaPrincipal(QMainWindow):
         self._actualizar_perfil()
         self._preparar_bloqueo()
         QTimer.singleShot(0, self._avisar_clave_no_disponible)
+        QTimer.singleShot(0, self._avisar_volumen)
+
+    def _avisar_volumen(self) -> None:
+        """Al administrador: la unidad del almacén no tiene BitLocker."""
+        estado = self.sesion.estado_volumen()
+        if estado is not None and estado[0] == "sin_proteger":
+            self._notificar("Volumen sin BitLocker: abre tu perfil para ver qué hacer")
 
     def _avisar_clave_no_disponible(self) -> None:
         """Modo de recuperación: la clave maestra está dañada o falta."""
@@ -722,6 +729,9 @@ class VentanaPrincipal(QMainWindow):
             estado = {"dosPasos": bool(self.sesion.segundo_factor_activo())}
         except Exception:
             estado = {"dosPasos": False}
+        volumen = self.sesion.estado_volumen()
+        if volumen is not None:
+            estado["volumen"], estado["volumenAviso"] = volumen
         self.puente.publicar("perfil", estado)
 
     def _abrir_segundo_factor(self) -> None:

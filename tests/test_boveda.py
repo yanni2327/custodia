@@ -24,7 +24,7 @@ def aislado(tmp_path, monkeypatch):
 def test_el_destinatario_abre_el_sobre():
     ana = boveda.generar_par()
     blob = boveda.cifrar(b"secreto", {"Ana": ana.public_key()})
-    assert boveda.es_v2(blob)
+    assert boveda.es_sobre(blob) and not boveda.es_v2(blob)
     assert boveda.descifrar(blob, "ana", ana) == b"secreto"
 
 
@@ -61,7 +61,7 @@ def test_el_prefijo_es_compatible_con_v1():
     ana = boveda.generar_par()
     blob = boveda.cifrar(b"1234567", {"ana": ana.public_key()})
     _, version, tam_claro = crypto._CABECERA.unpack_from(blob, 0)
-    assert version == 2 and tam_claro == 7
+    assert version == boveda.VERSION and tam_claro == 7
 
 
 def test_identidad_persistida(aislado):

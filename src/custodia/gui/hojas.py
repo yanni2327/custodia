@@ -27,7 +27,7 @@ from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QFileDialog
 
-from ..core import config, respaldo
+from ..core import config, recuperacion, respaldo
 from ..core.acl import Perm
 from ..core.errors import AuthenticationError, CustodiaError
 from . import avisos
@@ -59,6 +59,26 @@ _OPERACIONES = {
     "restaurar_clave": "Respaldo de la clave restaurado",
     "clave_no_disponible": "Clave maestra no disponible",
     "propietario_espacio": "Propietario de la carpeta personal",
+    "cadena_iniciada": "Cadena de la bitácora iniciada",
+    "verificar_bitacora": "Verificación de la bitácora",
+    "volumen_sin_proteger": "Volumen sin BitLocker",
+    "crear_clave_recuperacion": "Clave de recuperación creada",
+    "recuperar_cuenta": "Archivos recuperados con la USB",
+    "identidad_regenerada": "Identidad de cifrado regenerada",
+    "identidad_no_disponible": "Identidad de cifrado no disponible",
+    "migracion_cifrado": "Migración al cifrado por usuario",
+}
+
+#: Qué significa cada motivo de ruptura de la cadena de la bitácora.
+_ROTURAS = {
+    "editado": "un registro fue modificado",
+    "borrado": "faltan registros: hay un hueco en la numeración",
+    "insertado": "hay un registro que no pertenece a la cadena, o se recalculó el anterior",
+    "truncado": "la bitácora quedó por detrás de lo anclado en el Visor de eventos: "
+                "se borró el final",
+    "ancla_distinta": "un registro no coincide con su ancla del Visor de eventos: "
+                      "la cadena se recalculó",
+    "ilegible": "no se pudo leer la base de datos",
 }
 
 
@@ -317,8 +337,9 @@ class ControladorCuentas(_Controlador):
         aviso_cifrado = ""
         try:
             if self.sesion.pierde_cifrado_al_restablecer(usuario):
-                aviso_cifrado = (" Atención: sus archivos cifrados solo para esa "
-                                 "persona dejarán de poder abrirse.")
+                aviso_cifrado = (" Atención: sus archivos cifrados dejarán de poder "
+                                 "abrirse hasta que el dueño del equipo los "
+                                 "recupere con la USB.")
         except Exception:
             pass
         if not self.v._confirmar_con_codigo(
@@ -462,6 +483,8 @@ class ControladorBitacora(_Controlador):
 
     datosChanged = Signal()
     visiblesChanged = Signal()
+    verificandoChanged = Signal()
+    _verificada = Signal(object)
 
     def __init__(self, ventana) -> None:
         super().__init__(ventana)
@@ -471,6 +494,62 @@ class ControladorBitacora(_Controlador):
         self._operaciones: list[dict] = []
         self._dias: list[str] = []
         self._filtros = ("", "", "", "", "", 0)
+        self._verificando = False
+        self._cerrada = False
+        self._verificada.connect(self._al_verificar)
+        self.recargar()
+
+    verificando = Property(bool, lambda self: self._verificando, notify=verificandoChanged)
+
+    def al_cerrar(self) -> None:
+        self._cerrada = True
+
+    def _poner_verificando(self, valor: bool) -> None:
+        self._verificando = valor
+        self.verificandoChanged.emit()
+
+    @Slot()
+    def verificarIntegridad(self) -> None:
+        """Recorrer la cadena y el Visor de eventos puede tardar: va en otro hilo."""
+        if self._verificando:
+            return
+        self._poner_verificando(True)
+
+        def correr() -> None:
+            try:
+                resultado = self.sesion.verificar_bitacora()
+            except Exception as exc:
+                resultado = exc
+            try:
+                self._verificada.emit(resultado)
+            except RuntimeError:
+                pass   # la hoja ya se cerró y Qt liberó el controlador
+
+        threading.Thread(target=correr, name="custodia-verificar", daemon=True).start()
+
+    @Slot(object)
+    def _al_verificar(self, resultado) -> None:
+        self._poner_verificando(False)
+        if self._cerrada:
+            return
+        if isinstance(resultado, Exception):
+            avisos.error(self.v, "No se pudo verificar la bitácora", str(resultado))
+        elif resultado.ok:
+            texto = f"Se revisaron {resultado.total} registros y la cadena está íntegra."
+            if resultado.ultima_ancla is not None:
+                texto += (" También coincide con las anclas del Visor de eventos, "
+                          f"la última en el registro {resultado.ultima_ancla}.")
+            if resultado.aviso:
+                texto += f"\n\n{resultado.aviso}"
+            avisos.exito(self.v, "Bitácora íntegra", texto)
+        else:
+            donde = (f" Primer registro afectado: {resultado.primer_id_roto}."
+                     if resultado.primer_id_roto is not None else "")
+            avisos.error(
+                self.v, "La bitácora fue alterada",
+                f"{_ROTURAS.get(resultado.motivo, resultado.motivo).capitalize()}."
+                f"{donde} Se revisaron {resultado.total} registros."
+            )
         self.recargar()
 
     @Property("QVariantList", notify=visiblesChanged)
@@ -798,6 +877,20 @@ class ControladorRespaldo(_Controlador):
     archivo = Property(str, lambda self: Path(self._origen).name if self._origen else "",
                        notify=archivoChanged)
 
+    @Property(bool, constant=True)
+    def hayRecuperacion(self) -> bool:
+        try:
+            return self.sesion.hay_clave_recuperacion()
+        except CustodiaError:
+            return True   # almacén dañado: que no ofrezca crear otra encima
+
+    @Property(int, constant=True)
+    def pendientesV1(self) -> int:
+        try:
+            return self.sesion.pendientes_de_migrar()
+        except Exception:
+            return 0
+
     def al_cerrar(self) -> None:
         self._cerrada = True
 
@@ -875,14 +968,99 @@ class ControladorRespaldo(_Controlador):
         )
         self.cerrar.emit()
 
+    # -- clave de recuperación (C20) ----------------------------------------
+
+    @Slot(str, str)
+    @_diferido
+    def crearRecuperacion(self, password: str, repetida: str) -> None:
+        if self._ocupado:
+            return
+        if password != repetida:
+            self.error.emit("Las dos contraseñas no coinciden.")
+            return
+        problema = respaldo.regla_contrasena(password)
+        if problema:
+            self.error.emit(problema)
+            return
+
+        destino, _ = QFileDialog.getSaveFileName(
+            self.v, "Guardar la clave de recuperación en la USB",
+            f"custodia-recuperacion{recuperacion.EXTENSION}",
+            f"Clave de recuperación (*{recuperacion.EXTENSION})")
+        if not destino:
+            return
+
+        if not self.v._confirmar_con_codigo(
+            "Crear la clave de recuperación",
+            "Quien tenga este archivo y su contraseña puede leer todos los archivos "
+            "cifrados por usuario. Debe guardarlo el dueño del computador. Escribe el "
+            "código de tu app de autenticación para confirmarlo.",
+            operacion="crear clave de recuperación", aceptar="Crear",
+        ):
+            return
+
+        self._en_hilo(lambda: self.sesion.crear_clave_recuperacion(password, destino),
+                      lambda _: self._recuperacion_creada(destino))
+
+    def _recuperacion_creada(self, destino: str) -> None:
+        avisos.exito(
+            self.v, "Clave de recuperación creada",
+            f"Se guardó «{Path(destino).name}». Haz una segunda copia en otro lugar: "
+            "si se pierde el archivo o su contraseña, nadie podrá recuperar los "
+            "archivos de quien olvide la suya."
+        )
+        self.cerrar.emit()
+
+    @Slot(str, str)
+    @_diferido
+    def recuperarCuenta(self, usuario: str, password: str) -> None:
+        if self._ocupado:
+            return
+        usuario = usuario.strip()
+        if not usuario:
+            self.error.emit("Escribe la cuenta que quieres recuperar.")
+            return
+        if not self._origen:
+            self.error.emit("Elige primero el archivo de la USB.")
+            return
+        if not password:
+            self.error.emit("Escribe la contraseña de la clave de recuperación.")
+            return
+        origen = self._origen
+        self._en_hilo(lambda: self.sesion.abrir_clave_recuperacion(origen, password),
+                      lambda clave: self._confirmar_recuperacion(clave, usuario))
+
+    def _confirmar_recuperacion(self, clave, usuario: str) -> None:
+        if not self.v._confirmar_con_codigo(
+            f"Recuperar los archivos de «{usuario}»",
+            "Esa cuenta volverá a poder abrir sus archivos cifrados. Escribe el código "
+            "de tu app de autenticación para confirmarlo.",
+            operacion=f"recuperar cuenta: {usuario}", aceptar="Recuperar", peligro=True,
+        ):
+            return
+        self._en_hilo(lambda: self.sesion.recuperar_cuenta(clave, usuario),
+                      lambda resumen: self._recuperada(usuario, resumen))
+
+    def _recuperada(self, usuario: str, resumen) -> None:
+        texto = f"Se recuperaron {resumen.recuperados} archivos de «{usuario}»."
+        if resumen.omitidos:
+            texto += f" {resumen.omitidos} no tenían sobre de recuperación."
+        if resumen.fallidos:
+            avisos.advertencia(self.v, "Recuperación incompleta",
+                               f"{texto} {resumen.fallidos} fallaron: repite la operación.")
+        else:
+            avisos.exito(self.v, "Archivos recuperados", texto)
+        self.cerrar.emit()
+
     # -- restaurar ----------------------------------------------------------
 
     @Slot()
     @_diferido
     def elegirArchivo(self) -> None:
         origen, _ = QFileDialog.getOpenFileName(
-            self.v, "Elegir el respaldo de la clave", "",
-            f"Respaldo de Custodia (*{respaldo.EXTENSION});;Todos los archivos (*)")
+            self.v, "Elegir el archivo", "",
+            f"Respaldo de Custodia (*{respaldo.EXTENSION} *{recuperacion.EXTENSION});;"
+            "Todos los archivos (*)")
         if origen:
             self._origen = origen
             self.archivoChanged.emit()

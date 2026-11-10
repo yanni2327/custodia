@@ -55,13 +55,13 @@ Item {
     }
 
     // ---- barra de filtros ----------------------------------------------------
-    Row {
+    Flow {
         id: filtros
         width: parent.width
         spacing: 8
 
         Rectangle {
-            width: Math.max(220, filtros.width - otros.width - 8)
+            width: Math.max(220, filtros.width - otros.width - verificar.width - 16)
             height: 40
             radius: 10
             color: T.CAMPO
@@ -177,6 +177,17 @@ Item {
                     }
                 }
             }
+        }
+
+        // Comprueba la cadena de hash; la hoja solo se abre a administradores.
+        Boton {
+            id: verificar
+            visible: puente.esAdmin
+            implicitHeight: 40
+            primario: false
+            texto: "Verificar integridad"
+            ocupado: hoja.c ? hoja.c.verificando : false
+            onPulsado: hoja.c.verificarIntegridad()
         }
     }
 

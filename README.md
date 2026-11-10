@@ -28,7 +28,7 @@ python scripts\spike_impersonation.py
 pytest
 ```
 
-Cobertura del núcleo (RNF-06, mínimo 80 %; hoy 90 %):
+Cobertura del núcleo (RNF-06, mínimo 80 %; hoy 92 %):
 
 ```bat
 pytest --cov=custodia.core --cov-report=term-missing
@@ -59,12 +59,15 @@ src/custodia/core/
   crypto.py        AES-256-GCM con clave maestra DPAPI (RF-08)
   respaldo.py      Respaldo y recuperación de la clave maestra (C13)
   boveda.py        Cifrado por usuario (RSA-2048 + AES-GCM). Desactivado por defecto
+  recuperacion.py  Clave de recuperación del cifrado por usuario, en USB (C20)
+  migracion.py     Paso de archivos con clave maestra al cifrado por usuario (C20)
   fsops.py         Operaciones sobre archivos reales (RF-03)
   permissions.py   Contrato can(sujeto, ruta, acción) (RNF-03, RF-07)
   backends/
     windows.py     Producción: sondea abriendo un manejador
     memoria.py     Doble de prueba, sin sistema operativo
-  audit.py         Bitácora en SQLite (RF-05)
+  audit.py         Bitácora en SQLite, encadenada con SHA-256 (RF-05, C16)
+  volumen.py       Comprobación de BitLocker en la unidad del almacén (C15)
   espacios.py      Estructura del almacén y permisos iniciales
   seguridad.py     Bloqueo por intentos fallidos
   totp.py          TOTP (RFC 6238), con detección de códigos ya usados
@@ -92,7 +95,7 @@ scripts/
   custodia_gui.py          Arranca la interfaz
   generar_icono.py         Regenera recursos/custodia.ico a partir del logo
 
-tests/                     262 pruebas sobre Windows real (crean y borran
+tests/                     382 pruebas sobre Windows real (crean y borran
                            cuentas temporales); ver «Verificación»
 ```
 
@@ -262,6 +265,81 @@ almacén. Si hay archivos y ninguno abre, se rechaza y no se modifica nada. La
 clave reemplazada se conserva 30 días como `master.key.anterior-<fecha>`: es el
 blob DPAPI, con la misma ACL, nunca la clave en claro.
 
+## Integridad de la bitácora (C16)
+
+Cada registro guarda el SHA-256 de su contenido y del hash del anterior
+(esquema de Schneier y Kelsey). Cada 50 eventos y al cerrar, el último id y su
+hash se copian al Visor de eventos de Windows (registro Application, origen
+«Custodia»). Un administrador lo comprueba con «Verificar integridad», en la
+vista de bitácora, y esa comprobación también queda registrada.
+
+Qué detecta:
+
+- Editar cualquier campo de un registro.
+- Borrar registros del medio, y huecos en la numeración.
+- Insertar registros que no pertenecen a la cadena.
+- Borrar los últimos registros, si queda por detrás de un ancla.
+- Recalcular la cadena, si algún registro recalculado tiene un ancla: el hash ya
+  no coincide con el del Visor de eventos.
+
+Qué no detecta:
+
+- Un administrador puede recalcular la cadena. La única diferencia que queda es
+  la de las anclas, así que si también borra o falsifica los eventos del Visor,
+  la manipulación no se ve. La cadena hace la alteración evidente; no la impide.
+- Cambios en los eventos posteriores a la última ancla: un borrado o un recálculo
+  de ese tramo, de hasta 49 registros, no deja rastro hasta el siguiente cierre.
+- Lo que nunca se registró. Tampoco garantiza que la hora del equipo sea correcta.
+- Si el Visor de eventos rota y descarta anclas antiguas, ya no se puede comparar
+  con ellas. Los registros previos a la migración se encadenan tal como estaban:
+  lo alterado antes de esa fecha no se puede saber.
+
+## Cifrado de volumen (C15)
+
+Al iniciar se consulta BitLocker en la unidad del almacén. Si está sin proteger,
+queda en la bitácora y el administrador ve en su perfil qué hacer. Con
+`CUSTODIA_EXIGIR_BITLOCKER=1`, además, la aplicación no deja entrar. Si la consulta
+falla, el estado es «desconocido» y no bloquea, para que un fallo de WMI no deje a
+nadie fuera. Custodia comprueba BitLocker, no lo activa; en Windows Home depende
+de que el equipo admita el cifrado del dispositivo.
+
+## Cifrado por usuario (C20)
+
+Está desactivado por defecto. Con él, cada archivo personal se cifra para quienes
+pueden leerlo, y un administrador sin su contraseña no puede abrirlo.
+
+**Para activarlo:**
+
+1. Un administrador crea la clave de recuperación en Perfil → Respaldo de la clave.
+   El archivo `.custodiarec` lo guarda el dueño del computador en una USB, con una
+   contraseña propia y una segunda copia en otro lugar.
+2. Se define `CUSTODIA_CIFRADO_POR_USUARIO=1`. Sin la clave de recuperación, la
+   opción no tiene efecto.
+3. Cada persona, al entrar, recibe su identidad y su carpeta personal se migra.
+
+Un archivo solo se migra si todos los que pueden leerlo seguirán pudiendo. Si lo
+lee un grupo o una cuenta que aún no tiene identidad, sigue con la clave maestra.
+`Compartida` no se migra, porque la abre un grupo entero: su contenido sigue al
+alcance de quien tenga la clave maestra.
+
+**Si alguien pierde su contraseña,** al entrar con la nueva recibe una identidad
+nueva y no puede abrir sus archivos. Con la USB, un administrador usa «Recuperar
+archivos de una cuenta» y se los devuelve. Sin la USB o su contraseña, se pierden.
+
+El respaldo `.custodiakey` guarda junto a él una copia de las identidades, en un
+archivo `.identidades`: hay que conservar los dos.
+
+Qué no cubre:
+
+- Quien tenga la USB y su contraseña puede leer todo.
+- Un administrador con acceso al proceso puede llegar a una clave privada mientras
+  la sesión de esa persona está abierta.
+- Las claves públicas no van firmadas. Sustituir la de alguien se detecta cuando
+  esa persona entra, pero lo compartido con ella entre tanto queda envuelto para la
+  clave falsa. Un administrador que altere a la vez la clave de recuperación y una
+  identidad provoca que esta se regenere, y el problema aparece al usar la USB.
+- Tras migrar, los bloques del archivo v1 pueden seguir en el disco.
+
 ## Salvaguardas de administración
 
 Crear, modificar y borrar cuentas reales del sistema exige cuidado:
@@ -306,7 +384,7 @@ El icono es `src/custodia/gui/recursos/custodia.ico`. Si cambia el logo:
 
 ## Verificación
 
-262 pruebas sobre Windows real (261 pasan, 1 se omite). Mediciones actuales:
+382 pruebas sobre Windows real (381 pasan, 1 se omite). Mediciones actuales:
 
 | Requisito | Resultado |
 |-----------|-----------|
@@ -314,13 +392,15 @@ El icono es `src/custodia/gui/recursos/custodia.ico`. Si cambia el logo:
 | RNF-02 ≤ 500 ms por 10 MB | 49,5 ms |
 | RNF-03 contrato contra ambos backends | Cumple |
 | RNF-05 sin archivos parciales | Cumple |
-| RNF-06 cobertura ≥ 80 % | 90 % (cumple) |
+| RNF-06 cobertura ≥ 80 % | 92 % (cumple) |
 | RNF-08 sobrecarga del cifrado ≤ 200 ms | 14,8 ms |
 
 ## Pendiente
 
 - Probar la restauración del respaldo de la clave (C13) en un segundo equipo
   físico: hoy está probada en este equipo, simulando la pérdida de la clave.
+- Activar el cifrado por usuario por defecto (C20), cuando no queden archivos con
+  clave maestra fuera de `Compartida`.
 - Prueba de usabilidad con dos personas ajenas al desarrollo (RNF-04).
 - Prueba del ejecutable en un equipo limpio (RNF-07) y reducir su tamaño
   excluyendo los módulos de Qt Quick que no se usan.

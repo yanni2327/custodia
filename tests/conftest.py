@@ -36,6 +36,13 @@ requiere_admin = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def sin_anclas_reales(monkeypatch):
+    """Las pruebas no escriben en el Visor de eventos del equipo, salvo que lo pidan."""
+    from custodia.core import config
+    monkeypatch.setattr(config, "ANCLAR_BITACORA", False)
+
+
 @pytest.fixture(scope="session")
 def grupos_app():
     """Garantiza que existen los grupos de la aplicación."""

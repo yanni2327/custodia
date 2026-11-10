@@ -22,7 +22,7 @@ from PySide6.QtCore import QEvent, QObject, QSettings
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QWidget
 
-from ..core import accounts, audit, config, crypto, espacios, respaldo
+from ..core import accounts, audit, config, crypto, espacios, respaldo, volumen
 from . import avisos, estilo, iconos
 from .login import DialogoIngreso
 from .sesion import arrancar_nucleo, detener_nucleo, hay_privilegios, raiz_lista
@@ -236,6 +236,12 @@ def main() -> int:
 
     arrancar_nucleo()
     try:
+        evaluacion = volumen.evaluar_arranque()
+        if evaluacion.bloquear:
+            avisos.error(None, "Este equipo exige cifrado de volumen",
+                         evaluacion.mensaje + "\n\nCustodia no se abrirá hasta entonces.")
+            return 1
+
         # Bucle de sesiones: «Cerrar sesión» vuelve al ingreso; cerrar la
         # ventana con la X (o «Salir» en el ingreso) termina la aplicación.
         while True:

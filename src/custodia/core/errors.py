@@ -93,6 +93,13 @@ class CryptoError(CustodiaError):
     """
 
 
+class IdentidadAlterada(CryptoError):
+    """
+    La identidad de cifrado no corresponde a lo guardado: su clave pública o la
+    clave de recuperación fueron sustituidas. No se regenera: se falla cerrado.
+    """
+
+
 class RespaldoError(CryptoError):
     """
     Falló la exportación o la restauración del respaldo de la clave maestra.

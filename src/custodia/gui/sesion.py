@@ -27,8 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core import (accounts, acl, audit, auth, boveda, config, crypto,
-                    descargas, espacios, fsops, jail, respaldo, seguridad,
-                    segundofactor)
+                    descargas, espacios, fsops, jail, migracion, recuperacion,
+                    respaldo, seguridad, segundofactor, volumen)
 from ..core.backends.windows import BackendWindows
 from ..core.errors import (AccountError, AuthenticationError,
                            CambioDeContrasenaRequerido, CryptoError,
@@ -175,18 +175,41 @@ class Sesion:
         # Cifrado por usuario: con la contraseña a mano, se crea la identidad la
         # primera vez y se desenvuelve la clave privada, que vive en memoria
         # durante la sesión. La contraseña no se guarda.
-        privada = None
-        if config.CIFRADO_POR_USUARIO:
-            try:
-                if not boveda.tiene_identidad(username):
-                    boveda.crear_identidad(username, password)
-                privada = boveda.cargar_privada(username, password)
-            except Exception:
-                privada = None
+        privada = cls._abrir_identidad(username, password) if boveda.activo() else None
 
         audit.registrar(username, "inicio_sesion", exito=True)
-        return cls(username=username, token=token, es_admin=es_admin,
-                   privada=privada, ultimo_contador=contador)
+        sesion = cls(username=username, token=token, es_admin=es_admin,
+                     privada=privada, ultimo_contador=contador)
+        if privada is not None:
+            sesion._migrar_mi_espacio()
+        return sesion
+
+    @staticmethod
+    def _abrir_identidad(username: str, password: str):
+        """La clave privada de la sesión; None si no se pudo, y queda registrado."""
+        try:
+            privada, regenerada = boveda.abrir_o_crear_identidad(username, password)
+        except Exception as exc:
+            audit.registrar(username, "identidad_no_disponible", exito=False,
+                            detalle=type(exc).__name__)
+            return None
+        if regenerada:
+            audit.registrar(username, "identidad_regenerada", exito=False,
+                            detalle="pendiente de recuperación con la USB")
+        return privada
+
+    def _migrar_mi_espacio(self) -> None:
+        """Lleva al cifrado por usuario lo que quede en la carpeta personal."""
+        try:
+            r = migracion.migrar_espacio(self.username, self.token, self.privada)
+        except Exception as exc:
+            audit.registrar(self.username, "migracion_cifrado", exito=False,
+                            detalle=type(exc).__name__)
+            return
+        if r.migrados or r.pendientes or r.fallidos:
+            audit.registrar(self.username, "migracion_cifrado", exito=r.fallidos == 0,
+                            detalle=f"{r.migrados} migrados, {r.pendientes} pendientes, "
+                                    f"{r.fallidos} fallidos")
 
     # -- contraseñas ----------------------------------------------------------
 
@@ -220,8 +243,14 @@ class Sesion:
             raise
         # Con el cifrado por usuario, la clave privada va protegida por la
         # contraseña: se vuelve a proteger con la nueva para no perderla.
-        if config.CIFRADO_POR_USUARIO and boveda.tiene_identidad(username):
-            boveda.cambiar_contrasena(username, actual, nueva)
+        if config.CIFRADO_POR_USUARIO:
+            try:
+                if boveda.tiene_identidad(username):
+                    boveda.cambiar_contrasena(username, actual, nueva)
+            except CryptoError as exc:
+                # La contraseña de Windows ya cambió; no se puede deshacer.
+                audit.registrar(username, "identidad_no_disponible", exito=False,
+                                detalle=type(exc).__name__)
         seguridad.limpiar(username)
         audit.registrar(username, "cambiar_password", exito=True, detalle=motivo)
 
@@ -263,7 +292,8 @@ class Sesion:
         Con el cifrado por usuario activo, restablecer la contraseña de otra
         persona deja inservible su clave privada (estaba protegida por la
         contraseña que nadie más conoce): sus archivos cifrados solo para ella
-        no se podrán abrir. La interfaz lo avisa antes de hacerlo.
+        no se podrán abrir hasta recuperarlos con la USB. La interfaz lo avisa
+        antes de hacerlo.
         """
         return bool(config.CIFRADO_POR_USUARIO and boveda.tiene_identidad(username))
 
@@ -515,10 +545,10 @@ class Sesion:
             blob = fsops.leer(ruta, descifrar=False)
         # El descifrado va fuera de la suplantación: con cifrado por usuario usa
         # la clave privada en memoria (sin tocar disco); con la clave maestra,
-        # el caché ya cargado. Un archivo v2 lo abre la bóveda; lo demás, la
-        # clave maestra (así se siguen leyendo archivos previos).
-        if (config.CIFRADO_POR_USUARIO and self.privada is not None
-                and boveda.es_v2(blob)):
+        # el caché ya cargado. Un archivo con sobres lo abre la bóveda; lo demás,
+        # la clave maestra (así se siguen leyendo archivos previos).
+        if boveda.es_sobre(blob):
+            self._exigir_privada()
             return boveda.descifrar(blob, self.username, self.privada)
         if crypto.esta_cifrado(blob):
             self._exigir_clave_maestra()
@@ -529,11 +559,14 @@ class Sesion:
         padre = ruta_virtual.rstrip("/").rsplit("/", 1)[0] or "/"
         self._proteger_raiz_del_almacen(padre, "escribir")
         ruta = jail.resolve(ruta_virtual)
-        if config.CIFRADO_POR_USUARIO and self.privada is not None:
+        if boveda.activo() and not self._es_compartida(ruta):
             # Se envuelve con la identidad del usuario ANTES de suplantar
             # (operación de la aplicación, no del usuario) y se escribe el blob
-            # ya cifrado, pidiéndole a fsops que no vuelva a cifrar.
-            blob = boveda.cifrar(datos, self._destinatarios_para(ruta))
+            # ya cifrado, pidiéndole a fsops que no vuelva a cifrar. Sin clave
+            # privada se falla: caer a v1 dejaría el archivo legible con la
+            # clave maestra sin que nadie lo supiera.
+            self._exigir_privada()
+            blob = self._sellar_para_escribir(ruta, datos)
             with impersonate(self.token):
                 return fsops.escribir(ruta, blob, sobrescribir=sobrescribir,
                                       cifrar=False)
@@ -554,26 +587,41 @@ class Sesion:
                 "menú de perfil."
             ) from None
 
-    def _destinatarios_para(self, ruta) -> dict:
+    @staticmethod
+    def _es_compartida(ruta) -> bool:
+        """La carpeta común se queda con clave maestra: la abre un grupo entero."""
+        partes = Path(ruta).relative_to(config.STORAGE_ROOT.resolve()).parts
+        return bool(partes) and partes[0].lower() == espacios.COMPARTIDA.lower()
+
+    def _exigir_privada(self) -> None:
+        if self.privada is None:
+            raise CryptoError(
+                "Tu clave de cifrado no está disponible. Si cambió tu contraseña, "
+                "el dueño del equipo debe recuperar tus archivos con la USB."
+            )
+
+    def _sellar_para_escribir(self, ruta, datos: bytes) -> bytes:
         """
-        Para quién se cifra un archivo: el que escribe y, si ya existía, quienes
-        ya tenían acceso (para no quitárselo al sobrescribir).
+        Un archivo con sobres conserva a sus destinatarios. Uno nuevo se cifra
+        para quien escribe, con su clave en memoria, y para el dueño del espacio.
         """
-        usuarios = {self.username.lower()}
         try:
             with impersonate(self.token):
-                viejo = ruta.read_bytes() if ruta.exists() and ruta.is_file() else None
-        except Exception:
+                viejo = ruta.read_bytes() if ruta.is_file() else None
+        except OSError:
             viejo = None
-        if viejo and boveda.es_v2(viejo):
-            usuarios.update(boveda.destinatarios(viejo))
+        recuperacion = boveda.publica_recuperacion()
+        if viejo and boveda.es_sobre(viejo):
+            return boveda.actualizar(viejo, datos, self.username, self.privada,
+                                     recuperacion=recuperacion)
 
-        destinatarios = {}
-        for usuario in usuarios:
-            publica = boveda.publica_de(usuario)
-            if publica is not None:
-                destinatarios[usuario] = publica
-        return destinatarios
+        destinatarios = {self.username.lower(): self.privada.public_key()}
+        partes = Path(ruta).relative_to(config.STORAGE_ROOT.resolve()).parts
+        if len(partes) > 1:
+            publica_dueno = boveda.publica_de(partes[0])
+            if publica_dueno is not None:
+                destinatarios.setdefault(partes[0].lower(), publica_dueno)
+        return boveda.cifrar_para(datos, destinatarios)
 
     def compartir(self, ruta_virtual: str, nuevo_usuario: str) -> None:
         """
@@ -594,7 +642,7 @@ class Sesion:
             if not ruta.is_file():
                 return
             blob = ruta.read_bytes()
-        if not boveda.es_v2(blob):
+        if not boveda.es_sobre(blob):
             return
         try:
             nuevo = boveda.conceder(blob, self.username, self.privada,
@@ -849,6 +897,77 @@ class Sesion:
         self._exigir_admin()
         return audit.consultar(solo_denegados=solo_denegados, limite=limite)
 
+    def verificar_bitacora(self) -> audit.ResultadoCadena:
+        """Comprueba la cadena de la bitácora (C16) y deja constancia en ella."""
+        self._exigir_admin_para(
+            "verificar_bitacora",
+            "Solo los administradores de Custodia pueden verificar la bitácora.",
+        )
+        resultado = audit.verificar_cadena()
+        detalle = (f"{resultado.total} registros íntegros" if resultado.ok
+                   else f"rota en id {resultado.primer_id_roto}: {resultado.motivo}")
+        audit.registrar(self.username, "verificar_bitacora", exito=resultado.ok,
+                        detalle=detalle)
+        return resultado
+
+    def estado_volumen(self) -> tuple[str, str] | None:
+        """(estado, qué hacer) del cifrado de volumen, solo para administradores."""
+        evaluacion = volumen.ultima_evaluacion()
+        if not self.es_admin or evaluacion is None:
+            return None
+        return evaluacion.estado, evaluacion.mensaje
+
+    # -- clave de recuperación del cifrado por usuario (C20) ----------------
+
+    _SOLO_ADMIN_RECUPERACION = ("Solo los administradores de Custodia pueden "
+                                "usar la clave de recuperación.")
+
+    @staticmethod
+    def hay_clave_recuperacion() -> bool:
+        return boveda.recuperacion_configurada()
+
+    def pendientes_de_migrar(self) -> int:
+        """Archivos con clave maestra fuera de la carpeta compartida."""
+        self._exigir_admin()
+        return migracion.pendientes_fuera_de_compartida()
+
+    def crear_clave_recuperacion(self, password: str, destino: str | Path) -> None:
+        """Genera la clave; la privada solo queda en `destino`, la USB."""
+        self._exigir_admin_para("crear_clave_recuperacion",
+                                self._SOLO_ADMIN_RECUPERACION)
+        try:
+            recuperacion.crear(password, destino)
+        except Exception as exc:
+            self._registrar_fallo_respaldo("crear_clave_recuperacion", exc)
+            raise
+        audit.registrar(self.username, "crear_clave_recuperacion", exito=True,
+                        detalle=f"archivo: {Path(destino).name}")
+
+    def abrir_clave_recuperacion(self, origen: str | Path,
+                                 password: str) -> recuperacion.ClaveRecuperacion:
+        """Abre la USB en memoria, sin cambiar nada todavía."""
+        self._exigir_admin_para("recuperar_cuenta", self._SOLO_ADMIN_RECUPERACION)
+        try:
+            return recuperacion.abrir(origen, password)
+        except Exception as exc:
+            self._registrar_fallo_respaldo("recuperar_cuenta", exc)
+            raise
+
+    def recuperar_cuenta(self, clave: recuperacion.ClaveRecuperacion,
+                         usuario: str) -> recuperacion.Resumen:
+        """Devuelve sus archivos a quien perdió la contraseña."""
+        self._exigir_admin_para("recuperar_cuenta", self._SOLO_ADMIN_RECUPERACION)
+        try:
+            resumen = recuperacion.recuperar_cuenta(clave, usuario, self.token)
+        except Exception as exc:
+            self._registrar_fallo_respaldo("recuperar_cuenta", exc)
+            raise
+        audit.registrar(self.username, "recuperar_cuenta", usuario,
+                        exito=resumen.fallidos == 0,
+                        detalle=f"{resumen.recuperados} recuperados, "
+                                f"{resumen.omitidos} sin sobre, {resumen.fallidos} fallidos")
+        return resumen
+
     # -- respaldo de la clave maestra (C13) ---------------------------------
     #
     # Ninguno de estos métodos suplanta: la clave maestra y su archivo son de
@@ -863,14 +982,13 @@ class Sesion:
         """False si la aplicación arrancó con la clave maestra dañada o ausente."""
         return crypto.clave_disponible()
 
-    def _exigir_admin_para(self, accion: str) -> None:
+    def _exigir_admin_para(self, accion: str, mensaje: str = (
+            "Solo los administradores de Custodia pueden exportar o "
+            "restaurar el respaldo de la clave.")) -> None:
         if not self.es_admin:
             audit.registrar(self.username, accion, exito=False,
                             detalle="la cuenta no es administradora")
-            raise PermissionError(
-                "Solo los administradores de Custodia pueden exportar o "
-                "restaurar el respaldo de la clave."
-            )
+            raise PermissionError(mensaje)
 
     def _registrar_fallo_respaldo(self, accion: str, exc: Exception) -> None:
         motivo = exc.motivo if isinstance(exc, RespaldoError) else type(exc).__name__
@@ -940,6 +1058,7 @@ def arrancar_nucleo() -> None:
     try:
         if config.STORAGE_ROOT.exists():
             espacios.preparar_raiz()
+            espacios.actualizar_compartida()
     except Exception:
         pass
 

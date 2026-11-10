@@ -23,6 +23,8 @@ arrastre. Es el "sus propios directorios" del caso de estudio.
 concedidas *al grupo* y no a cada persona. Es la demostración más clara de por
 qué el token importa: cuando se añade a alguien al grupo, obtiene el acceso sin
 tocar una sola ACL, porque Windows resuelve la pertenencia al emitir el token.
+Cada archivo solo lo puede borrar o sustituir quien lo creó, gracias a un permiso
+para CREATOR OWNER: la escritura atómica lo necesita para renombrar su temporal.
 
 Todas estas operaciones escriben ACL, así que exigen privilegios de
 administrador y se ejecutan **sin suplantar a nadie**.
@@ -51,6 +53,10 @@ _PERMISO_EN_RAIZ = int(Perm.EJECUTAR)
 
 #: Nombre de la carpeta común.
 COMPARTIDA = "Compartida"
+
+#: Quien crea un archivo en la carpeta común puede borrarlo; nadie más.
+_BORRA_SU_CREADOR = ("CREATOR OWNER", int(Perm.ELIMINAR), True, True)
+_SID_CREATOR_OWNER = "S-1-3-0"
 
 
 def preparar_raiz() -> None:
@@ -93,10 +99,29 @@ def preparar_compartida() -> Path:
              int(Perm.LEER) | int(Perm.ESCRIBIR) | int(Perm.EJECUTAR)
              | _CREAR_ARCHIVOS | _CREAR_SUBCARPETAS,
              True, True),
+            _BORRA_SU_CREADOR,
         ],
         romper_herencia=True,
     )
     return carpeta
+
+
+def actualizar_compartida() -> None:
+    """
+    Añade a una carpeta común ya creada el permiso de su creador. Idempotente.
+
+    Solo añade: los permisos que alguien haya puesto a mano se conservan, y la
+    herencia sigue rota. `acl.conceder` la reactivaría.
+    """
+    carpeta = config.STORAGE_ROOT / COMPARTIDA
+    if not carpeta.exists():
+        return
+    entradas = acl.leer_permisos(carpeta)
+    if any(e.sid == _SID_CREATOR_OWNER and e.permitir for e in entradas):
+        return
+    actuales = [(e.principal, e.mascara, e.permitir, e.hereda_a_hijos)
+                for e in entradas if not e.heredado]
+    acl.establecer_permisos(carpeta, actuales + [_BORRA_SU_CREADOR], romper_herencia=True)
 
 
 def ruta_personal(username: str) -> Path:

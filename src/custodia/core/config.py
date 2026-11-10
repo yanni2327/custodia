@@ -25,6 +25,13 @@ STORAGE_ROOT = Path(
 #: Base de datos SQLite de la bitácora de auditoría.
 AUDIT_DB = Path(os.getenv("CUSTODIA_AUDIT_DB", r"C:\ProgramData\Custodia\audit.db"))
 
+#: Escribir anclas de la bitácora en el Visor de eventos de Windows (C16). Solo
+#: se apaga en pruebas, para no llenar el registro de Application del equipo.
+ANCLAR_BITACORA = os.getenv("CUSTODIA_ANCLAR_BITACORA", "1") not in ("0", "false", "False")
+
+#: Impedir la entrada si la unidad del almacén no tiene BitLocker activo (C15).
+EXIGIR_BITLOCKER = os.getenv("CUSTODIA_EXIGIR_BITLOCKER", "0") not in ("0", "false", "False")
+
 #: Clave maestra de cifrado, protegida con DPAPI. Nunca contiene la clave en
 #: claro: lo que se guarda es un blob que solo esta máquina puede descifrar.
 KEY_FILE = Path(os.getenv("CUSTODIA_KEY_FILE", r"C:\ProgramData\Custodia\master.key"))
@@ -95,6 +102,10 @@ CIFRADO_ACTIVO = os.getenv("CUSTODIA_CIFRADO", "1") not in ("0", "false", "False
 CIFRADO_POR_USUARIO = os.getenv("CUSTODIA_CIFRADO_POR_USUARIO", "0") not in (
     "0", "false", "False"
 )
+
+#: Archivos que se migran al cifrado por usuario en cada inicio de sesión. Lo
+#: que no alcance se migra en los siguientes, para no demorar el ingreso.
+MIGRACION_MAX_POR_INGRESO = int(os.getenv("CUSTODIA_MIGRACION_MAX_POR_INGRESO", "200"))
 
 #: Almacén de identidades (par de claves por usuario) del cifrado por usuario.
 #: Las públicas van en claro; las privadas, cifradas con la contraseña de cada
