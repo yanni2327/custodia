@@ -527,8 +527,9 @@ Cada riesgo se evaluó dos veces: el riesgo \textit{potencial}, suponiendo una a
 \label{tab:controles}
 \centering
 \footnotesize
+\renewcommand{\arraystretch}{0.94}
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{|l|p{1.95cm}|p{3.5cm}|p{6.75cm}|p{1.45cm}|p{1.85cm}|}
+\begin{tabular}{|l|p{1.95cm}|p{3.4cm}|p{6.6cm}|p{1.4cm}|p{2.15cm}|}
 \hline
 \textbf{ID} & \textbf{Propiedad} & \textbf{Control} & \textbf{Mecanismo} & \textbf{Riesgos} & \textbf{Estado} \\
 \hline
@@ -585,34 +586,8 @@ Los controles C3 y C8 son deliberadamente independientes. La ACL protege mientra
 
 \begin{figure}[!t]
 \centering
-\begin{tikzpicture}[font=\scriptsize, >=Stealth,
-  caja/.style={draw, rounded corners=2pt, align=center, minimum height=7mm, fill=white},
-  win/.style={caja, fill=blue!8},
-  dato/.style={caja, fill=gray!15}]
-\node[caja, text width=2.2cm, dashed] (tel) at (-1.9,1.3) {App de autenticación (TOTP)};
-\node[caja, text width=2.2cm] (usr) at (-1.9,0) {Usuario estándar};
-\node[caja, text width=2.2cm] (adm) at (1.9,0) {Administrador};
-\node[caja, text width=6.2cm, fill=orange!15] (app) at (0,-1.5) {\textbf{Custodia}\\interfaz de escritorio y núcleo};
-\node[win, text width=1.9cm] (sam) at (-2.6,-3.4) {Cuentas y grupos locales};
-\node[win, text width=1.9cm] (ntfs) at (0,-3.4) {NTFS\\(ACL)};
-\node[win, text width=1.9cm] (dpapi) at (2.6,-3.4) {DPAPI};
-\node[dato, text width=1.9cm] (bit) at (-2.6,-5.4) {Bitácora de auditoría};
-\node[dato, text width=1.9cm] (alm) at (0,-5.4) {Almacén de archivos cifrados};
-\node[dato, text width=1.9cm] (key) at (2.6,-5.4) {Clave maestra y secretos 2FA};
-\draw[->] (tel) -- (usr) node[midway, right] {código de 6 dígitos};
-\draw[->] (usr) -- (usr |- app.north) node[midway, right] {credenciales};
-\draw[->] (adm) -- (adm |- app.north) node[midway, right] {administra};
-\draw[->] (sam |- app.south) -- (sam) node[pos=0.4, right] {autentica};
-\draw[->] (ntfs |- app.south) -- (ntfs) node[pos=0.4, right] {suplanta y opera};
-\draw[->] (dpapi |- app.south) -- (dpapi) node[pos=0.4, right] {secretos};
-\draw[->] (ntfs) -- (alm) node[midway, right] {permite o deniega};
-\draw[->] (dpapi) -- (key) node[midway, right] {desprotege};
-\draw[->] (app.west) -- (-4.05,-1.5) |- (bit.west);
-\node[rotate=90] at (-4.25,-3.4) {registra};
-\node[draw, dashed, fit={(sam) (ntfs) (dpapi)}, inner sep=4pt] (w) {};
-\node[anchor=north west, font=\scriptsize\itshape] at ([yshift=-1pt]w.south west) {Windows};
-\end{tikzpicture}
-\caption{Diagrama conceptual de Custodia.}
+\includegraphics[width=0.92\columnwidth]{figuras/uml_conceptual.png}
+\caption{Diagrama conceptual de Custodia (UML).}
 \label{fig:conceptual}
 \end{figure}
 
@@ -621,71 +596,36 @@ La Fig.~\ref{fig:conceptual} muestra los actores, el sistema y los servicios de 
 
 \begin{figure*}[!t]
 \centering
-\begin{tikzpicture}[font=\scriptsize, >=Stealth,
-  mod/.style={draw, rounded corners=2pt, align=center, minimum height=8mm, text width=2.35cm, fill=white},
-  capa/.style={draw, dashed, rounded corners=3pt}]
-% Capas
-\draw[capa, fill=orange!10] (-1.25,0.6) rectangle (16.25,-0.6);
-\draw[capa, fill=yellow!12] (-1.25,-0.9) rectangle (16.25,-2.2);
-\draw[capa, fill=green!8]   (-1.25,-2.4) rectangle (16.25,-5.0);
-\draw[capa, fill=blue!8]    (-1.25,-5.4) rectangle (16.25,-6.6);
-\draw[capa, fill=gray!15]   (-1.25,-7.0) rectangle (16.25,-8.2);
-\node[rotate=90, font=\scriptsize\bfseries] at (-0.95,0) {Interfaz};
-\node[rotate=90, font=\scriptsize\bfseries] at (-0.95,-1.55) {Frontera};
-\node[rotate=90, font=\scriptsize\bfseries] at (-0.95,-3.7) {Núcleo};
-\node[rotate=90, font=\scriptsize\bfseries] at (-0.95,-6.0) {Windows};
-\node[rotate=90, font=\scriptsize\bfseries] at (-0.95,-7.6) {Recursos};
-% Interfaz (QML)
-\node[mod, text width=3.1cm] (ing) at (1.6,0) {Ingreso y verificación\\(\texttt{Login.qml}, \texttt{ingreso\_qml})};
-\node[mod, text width=3.1cm] (ven) at (5.75,0) {Ventana principal y panel de permisos (\texttt{Principal.qml}, \texttt{ventana})};
-\node[mod, text width=3.1cm] (hoj) at (9.9,0) {Hojas: cuentas, permisos, bitácora, 2FA (\texttt{hojas})};
-\node[mod, text width=3.1cm] (blo) at (14.05,0) {Bloqueo por inactividad\\(\texttt{Bloqueo.qml}, \texttt{bloqueo})};
-% Frontera
-\node[mod, text width=16.3cm, fill=yellow!20] (ses) at (7.6,-1.55) {\textbf{Sesión} (\texttt{sesion}): resuelve y valida la ruta, suplanta, ejecuta solo la operación sometida a permisos y revierte. Ningún archivo de la interfaz suplanta.};
-\foreach \n in {ing,ven,hoj,blo} \draw[->] (\n.south) -- (\n.south |- ses.north);
-% Núcleo, fila 1: identidad
-\node[mod] (auth) at (0.45,-3.05) {Autenticación\\(\texttt{auth})};
-\node[mod] (seg) at (3.25,-3.05) {Bloqueo por intentos\\(\texttt{seguridad})};
-\node[mod] (tfa) at (6.05,-3.05) {Segundo factor\\(\texttt{totp}, \texttt{segundofactor})};
-\node[mod] (acc) at (8.85,-3.05) {Cuentas y grupos\\(\texttt{accounts})};
-\node[mod] (des) at (11.65,-3.05) {Control de copias\\(\texttt{descargas})};
-\node[mod] (aud) at (14.45,-3.05) {Bitácora, hilo escritor (\texttt{audit})};
-% Núcleo, fila 2: archivos
-\node[mod] (jail) at (0.45,-4.35) {Confinamiento\\(\texttt{jail})};
-\node[mod] (imp) at (3.25,-4.35) {Suplantación\\(\texttt{impersonate})};
-\node[mod] (fs) at (6.05,-4.35) {Operaciones atómicas (\texttt{fsops})};
-\node[mod] (per) at (8.85,-4.35) {Permisos y ACL\\(\texttt{permissions}, \texttt{acl})};
-\node[mod] (esp) at (11.65,-4.35) {Espacios\\(\texttt{espacios})};
-\node[mod] (cry) at (14.45,-4.35) {Cifrado\\(\texttt{crypto}, \texttt{boveda})};
-\draw[->, thick] (7.5,-1.95) -- (7.5,-2.4);
-% Windows
-\node[mod, text width=2.6cm] (wlog) at (1.1,-6.0) {\texttt{LogonUser}};
-\node[mod, text width=2.6cm] (wimp) at (4.25,-6.0) {\texttt{Impersonate\-LoggedOnUser}, \texttt{RevertToSelf}};
-\node[mod, text width=2.6cm] (wnet) at (7.4,-6.0) {Gestión de usuarios y grupos locales};
-\node[mod, text width=2.6cm] (wntfs) at (10.55,-6.0) {NTFS y DACL};
-\node[mod, text width=2.6cm] (wdp) at (13.7,-6.0) {DPAPI\\(\texttt{CryptProtect\-Data})};
-\draw[->, thick] (7.5,-5.0) -- (7.5,-5.4) node[midway, right] {llamadas Win32 (\texttt{pywin32})};
-% Recursos
-\node[mod, text width=2.6cm] (sam) at (1.1,-7.6) {Base de cuentas (SAM)};
-\node[mod, text width=2.6cm] (alm) at (4.25,-7.6) {Almacén: archivos cifrados con su DACL};
-\node[mod, text width=2.6cm] (db) at (7.4,-7.6) {\texttt{audit.db}\\(SQLite)};
-\node[mod, text width=2.6cm] (est) at (10.55,-7.6) {\texttt{2fa.dat}, \texttt{intentos.dat}, \texttt{descargas.dat}};
-\node[mod, text width=2.6cm] (key) at (13.7,-7.6) {\texttt{master.key},\\\texttt{identidades.json}};
-\draw[->] (wlog) -- (sam);
-\draw[->] (wnet.south) -- (sam.north east);
-\draw[->] (wntfs.south) -- (alm.north east);
-\draw[->] (wdp) -- (key);
-\draw[->] (wdp.south) -- (est.north east);
-\end{tikzpicture}
-\caption{Diagrama lógico de la arquitectura por capas. Los archivos de estado de la capa de recursos llevan una ACL que solo admite a Administradores y SYSTEM.}
+\includegraphics[width=0.95\textwidth]{figuras/uml_logico.png}
+\caption{Diagrama lógico de la arquitectura por capas (UML). Los archivos de estado de la capa de recursos llevan una ACL que solo admite a Administradores y SYSTEM.}
 \label{fig:logico}
 \end{figure*}
 
 \subsection{Diagrama lógico}
 La Fig.~\ref{fig:logico} detalla la arquitectura en cinco capas. La interfaz nunca invoca la API de Windows directamente ni suplanta identidades: lo hace a través de la clase \texttt{Sesion}, la frontera con el núcleo. Esta decisión no es estética: la suplantación en Windows es por hilo y hay que revertirla siempre, y si cada botón la gestionara por su cuenta, bastaría un retorno anticipado en un solo manejador para dejar el hilo de la interfaz con la identidad de otro usuario. El núcleo se divide en módulos de identidad (fila superior) y de archivos (fila inferior), y es el único que habla con Windows.
 
+\subsection{Diagrama de casos de uso}
+La Fig.~\ref{fig:casos} presenta los casos de uso. El administrador hereda los del usuario estándar y añade la administración de cuentas, la bitácora y la custodia de la clave. Toda operación sensible incluye la confirmación con un código TOTP, y las que tocan archivos o cuentas incluyen su registro en la bitácora. Windows participa como actor externo: valida las contraseñas y autoriza cada acceso.
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{figuras/uml_casos.png}
+\caption{Diagrama de casos de uso de Custodia (UML).}
+\label{fig:casos}
+\end{figure}
+
+\subsection{Diagrama de clases}
+La Fig.~\ref{fig:clases} presenta el modelo del dominio. Custodia no guarda usuarios ni permisos en una base de datos propia: \texttt{Cuenta} y \texttt{Grupo} son cuentas y grupos locales de Windows, y \texttt{EntradaPermiso} es una entrada de la ACL de NTFS. Un \texttt{Archivo} se cifra con la \texttt{ClaveMaestra} (versión 1) o lleva un \texttt{Sobre} por cada persona autorizada y por la \texttt{ClaveRecuperacion} (versión 3). Cada \texttt{EventoBitacora} se enlaza con el anterior por su resumen SHA-256, y algunos se anclan en el Visor de eventos.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{figuras/uml_clases.png}
+\caption{Diagrama de clases del dominio de Custodia (UML).}
+\label{fig:clases}
+\end{figure*}
+
 \subsection{Flujo de una operación}
-La exportación de una copia (``Guardar una copia'') es la operación que más controles recorre:
+La exportación de una copia (``Guardar una copia'') es la operación que más controles recorre. La Fig.~\ref{fig:secuencia} muestra su diagrama de secuencia, y los pasos con sus controles son:
 \begin{enumerate}
     \item Al arrancar, con su identidad privilegiada, la aplicación carga la clave maestra en memoria e inicia la bitácora (C9, C14).
     \item El usuario ingresa su contraseña y su código TOTP; Windows valida la contraseña y la aplicación el código (C1, C2, C17).
@@ -696,6 +636,13 @@ La exportación de una copia (``Guardar una copia'') es la operación que más c
     \item El hilo recupera su identidad original, sea cual sea el resultado (C6).
     \item La descarga, su motivo y su resultado se registran en la bitácora (C7).
 \end{enumerate}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.86\textwidth]{figuras/uml_secuencia.png}
+\caption{Diagrama de secuencia de la operación «Guardar una copia» (UML).}
+\label{fig:secuencia}
+\end{figure*}
 
 \subsection{Perspectiva forense de la bitácora}
 \label{sec:forense}

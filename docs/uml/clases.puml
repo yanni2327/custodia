@@ -1,0 +1,118 @@
+@startuml
+!include estilo.iuml
+skinparam linetype ortho
+skinparam nodesep 40
+skinparam ranksep 50
+
+abstract class Principal {
+  -nombre: String
+  -sid: String
+}
+class Cuenta {
+  -esAdmin: Boolean
+  -creadaPorCustodia: Boolean
+  +incorporar()
+  +retirar()
+}
+class Grupo {
+  -descripcion: String
+}
+class Sesion {
+  -token: Handle
+  -ultimoContador: Integer
+  -privada: ClavePrivada [0..1]
+  +confirmarOperacion(codigo: String)
+  +cerrar()
+}
+class SecretoTOTP {
+  -secretoDPAPI: Bytes
+  +verificar(codigo: String): Boolean
+}
+abstract class ElementoAlmacen {
+  -nombre: String
+  -rutaVirtual: String
+  -propietario: String
+}
+class Carpeta {
+  -esEspacioBase: Boolean
+}
+class Archivo {
+  -version: Integer
+  -tamanoClaro: Integer
+  -nonce: Bytes
+  -etiqueta: Bytes
+}
+class EntradaPermiso {
+  -permitir: Boolean
+  -mascara: Integer
+  -heredado: Boolean
+  -heredaAHijos: Boolean
+}
+class ClaveMaestra {
+  -blobDPAPI: Bytes
+  +cifrar(datos: Bytes): Bytes
+  +descifrar(blob: Bytes): Bytes
+}
+class RespaldoClave {
+  -sal: Bytes
+  -parametrosScrypt: String
+  -nonce: Bytes
+}
+class Identidad {
+  -clavePublica: RSA2048
+  -privadaCifrada: Bytes
+  -huellaRecuperacion: String
+}
+class ClaveRecuperacion {
+  -clavePublica: RSA3072
+  -huella: String
+}
+class Sobre {
+  -destinatario: String
+  -claveEnvuelta: Bytes
+}
+class EventoBitacora {
+  -id: Integer
+  -momento: DateTime
+  -usuario: String
+  -accion: String
+  -ruta: String
+  -exito: Boolean
+  -detalle: String
+  -hashAnterior: String
+  -hash: String
+}
+class AnclaVisorEventos {
+  -idRegistro: Integer
+  -hash: String
+}
+enum Accion <<enumeration>> {
+  LEER
+  ESCRIBIR
+  LISTAR
+  CREAR
+  ELIMINAR
+  CAMBIAR_PERMISOS
+}
+
+Principal <|-- Cuenta
+Principal <|-- Grupo
+Cuenta "0..*" -- "0..*" Grupo
+Cuenta "1" -- "0..*" Sesion
+Cuenta "1" -- "0..1" SecretoTOTP
+Cuenta "1" -- "0..1" Identidad
+ElementoAlmacen <|-- Carpeta
+ElementoAlmacen <|-- Archivo
+Carpeta "1" o-- "0..*" ElementoAlmacen
+ElementoAlmacen "1" *-- "1..*" EntradaPermiso
+EntradaPermiso "0..*" -- "1" Principal
+Archivo "0..*" -- "1" ClaveMaestra
+Archivo "1" *-- "0..*" Sobre
+Sobre "0..*" -- "0..1" Identidad
+Sobre "0..*" -- "0..1" ClaveRecuperacion
+ClaveMaestra "1" -- "0..*" RespaldoClave
+Sesion "1" -- "0..*" EventoBitacora
+EventoBitacora "0..1" -- "0..1" EventoBitacora
+AnclaVisorEventos "0..*" -- "1" EventoBitacora
+Sesion ..> Accion
+@enduml

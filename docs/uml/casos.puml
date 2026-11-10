@@ -1,0 +1,58 @@
+@startuml
+!include estilo.iuml
+left to right direction
+skinparam linetype polyline
+actor "Usuario estándar" as U
+actor "Administrador" as A
+actor "Windows" as W
+actor "App de autenticación" as T
+U <|-- A
+rectangle "Custodia - Sistema de archivos cifrado" {
+  usecase "Iniciar sesión" as CU1
+  usecase "Verificar segundo factor" as V2
+  usecase "Explorar y abrir archivos" as CU2
+  usecase "Añadir archivos y carpetas" as CU3
+  usecase "Renombrar o eliminar" as CU4
+  usecase "Guardar una copia" as CU5
+  usecase "Gestionar permisos" as CU6
+  usecase "Activar verificación\nen dos pasos" as CU7
+  usecase "Cambiar contraseña" as CU8
+  usecase "Bloquear y desbloquear\nla sesión" as CU9
+  usecase "Administrar cuentas\ny grupos" as CU10
+  usecase "Consultar y verificar\nla bitácora" as CU11
+  usecase "Respaldar y restaurar\nla clave maestra" as CU12
+  usecase "Crear clave de recuperación\ny recuperar una cuenta" as CU13
+  usecase "Confirmar con\ncódigo TOTP" as TOTP
+  usecase "Registrar en\nla bitácora" as REG
+}
+U -- CU1
+U -- CU2
+U -- CU3
+U -- CU4
+U -- CU5
+U -- CU6
+U -- CU7
+U -- CU8
+U -- CU9
+A -- CU10
+A -- CU11
+A -- CU12
+A -- CU13
+CU1 <.. V2 : <<extend>>
+CU3 ..> TOTP : <<include>>
+CU4 ..> TOTP : <<include>>
+CU5 ..> TOTP : <<include>>
+CU6 ..> TOTP : <<include>>
+CU10 ..> TOTP : <<include>>
+CU12 ..> TOTP : <<include>>
+CU13 ..> TOTP : <<include>>
+CU1 ..> REG : <<include>>
+CU2 ..> REG : <<include>>
+CU5 ..> REG : <<include>>
+CU10 ..> REG : <<include>>
+CU1 -- W
+CU2 -- W
+CU6 -- W
+TOTP -- T
+T -[hidden]- W
+@enduml

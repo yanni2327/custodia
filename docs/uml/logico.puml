@@ -1,0 +1,71 @@
+@startuml
+!include estilo.iuml
+skinparam linetype ortho
+skinparam ranksep 40
+package "Interfaz" {
+  component "Ingreso y verificación\n(Login.qml, ingreso_qml)" as ING
+  component "Ventana principal\n(Principal.qml, ventana)" as VEN
+  component "Hojas: cuentas, permisos,\nbitácora, 2FA (hojas)" as HOJ
+  component "Bloqueo por inactividad\n(Bloqueo.qml, bloqueo)" as BLO
+}
+package "Frontera" {
+  component "Sesion\n(resuelve ruta, suplanta,\nopera y revierte)" as SES
+}
+package "Núcleo" {
+  component "auth" as AUTH
+  component "seguridad" as SEG
+  component "totp,\nsegundofactor" as TFA
+  component "accounts" as ACC
+  component "descargas" as DES
+  component "audit" as AUD
+  component "jail" as JAIL
+  component "impersonate" as IMP
+  component "fsops" as FS
+  component "permissions,\nacl" as PER
+  component "espacios" as ESP
+  component "crypto,\nboveda" as CRY
+}
+package "Windows (pywin32)" {
+  component "LogonUser" as WLOG
+  component "ImpersonateLoggedOnUser,\nRevertToSelf" as WIMP
+  component "Usuarios y grupos\nlocales" as WNET
+  component "NTFS y DACL" as WNTFS
+  component "DPAPI" as WDP
+}
+package "Recursos" {
+  database "SAM" as RSAM
+  artifact "Almacén cifrado" as RALM
+  database "audit.db" as RDB
+  artifact "2fa.dat, intentos.dat,\ndescargas.dat" as REST
+  artifact "master.key,\nidentidades.json" as RKEY
+}
+ING ..> SES : <<use>>
+VEN ..> SES : <<use>>
+HOJ ..> SES : <<use>>
+BLO ..> SES : <<use>>
+SES ..> AUTH
+SES ..> SEG
+SES ..> TFA
+SES ..> ACC
+SES ..> DES
+SES ..> AUD
+SES ..> JAIL
+SES ..> IMP
+SES ..> FS
+SES ..> PER
+SES ..> ESP
+SES ..> CRY
+AUTH ..> WLOG
+IMP ..> WIMP
+ACC ..> WNET
+PER ..> WNTFS
+FS ..> WNTFS
+CRY ..> WDP
+TFA ..> WDP
+WLOG --> RSAM
+WNET --> RSAM
+WNTFS --> RALM
+AUD --> RDB
+SEG --> REST
+WDP --> RKEY
+@enduml

@@ -1,0 +1,60 @@
+@startuml
+!include estilo.iuml
+skinparam ParticipantPadding 12
+skinparam BoxPadding 8
+hide footbox
+autonumber "0:"
+actor "usuario" as U
+participant ": VentanaPrincipal" as V
+participant ": Sesion" as S
+participant ": SegundoFactor" as T
+participant ": Jail" as J
+participant ": Windows (NTFS)" as W
+participant ": Crypto" as C
+participant ": Bitacora" as B
+
+U -> V : guardarCopia(archivo)
+activate V
+V -> S : estado_descargas()
+activate S
+S --> V : permitido
+deactivate S
+V -> U : pedirMotivo()
+U -> V : motivo
+V -> U : pedirCodigo()
+U -> V : codigo
+V -> S : confirmar_operacion(codigo, "copia")
+activate S
+S -> T : verificar_contador(usuario, codigo)
+activate T
+T --> S : contador
+deactivate T
+S --> V : confirmado
+deactivate S
+V -> S : leer(ruta)
+activate S
+S -> J : resolve(ruta)
+activate J
+J --> S : rutaFisica
+deactivate J
+S -> W : ImpersonateLoggedOnUser(token)
+S -> W : abrir(rutaFisica)
+activate W
+alt acceso permitido
+  W --> S : contenido cifrado
+  deactivate W
+  S -> C : descifrar(blob)
+  activate C
+  C --> S : contenido
+  deactivate C
+else acceso denegado
+  W --> S : ACCESS_DENIED
+  S --> V : PermissionDenied
+end
+S -> W : RevertToSelf()
+S -> B : registrar(usuario, "copia", ruta, éxito, motivo)
+S --> V : resultado
+deactivate S
+V -> U : guardar copia en el destino
+deactivate V
+@enduml

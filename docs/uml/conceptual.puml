@@ -1,0 +1,28 @@
+@startuml
+!include estilo.iuml
+skinparam linetype polyline
+actor "Usuario estándar" as U
+actor "Administrador" as A
+actor "App de autenticación" as T
+U <|-- A
+T .> U : código de 6 dígitos
+node "Equipo Windows" {
+  component "Custodia" as C
+  node "Windows" {
+    component "Cuentas y grupos\nlocales (SAM)" as SAM
+    component "NTFS (ACL)" as NTFS
+    component "DPAPI" as DP
+  }
+  database "Bitácora de\nauditoría" as BIT
+  artifact "Almacén de\narchivos cifrados" as ALM
+  artifact "Clave maestra y\nsecretos 2FA" as KEY
+}
+U --> C : credenciales
+A --> C : administra
+C --> SAM : autentica
+C --> NTFS : suplanta y opera
+C --> DP : protege claves
+C --> BIT : registra
+NTFS --> ALM : permite o deniega
+DP --> KEY : cifra
+@enduml
