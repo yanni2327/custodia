@@ -15,6 +15,7 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,babel,fit}
 \usepackage{url}
+\usepackage{xurl}
 \usepackage{hyperref}
 \hypersetup{hidelinks}
 \addto\captionsspanish{\renewcommand{\tablename}{Tabla}\renewcommand{\appendixname}{Anexo}}
@@ -106,8 +107,22 @@ risk analysis, MAGERIT, encryption at rest, AES-256-GCM, access control, NTFS, i
 \section{Introducción y objetivos}
 \label{sec:intro}
 
+\subsection{Problemática}
+En mayo de 2023, el diario alemán \textit{Handelsblatt} le informó a Tesla que había recibido 100~GB de información interna de la compañía: unos 23\,000 archivos con quejas de clientes sobre su sistema de asistencia a la conducción y datos personales de más de 75\,000 empleados y exempleados. La investigación de la empresa concluyó que no hubo un ataque externo: dos exempleados se habían llevado los archivos en violación de las políticas internas de seguridad~\cite{tesla}. El caso ilustra el problema que motiva este proyecto. La información no se perdió por una falla técnica visible, sino porque personas con acceso pudieron leer y copiar los archivos sin que nada lo impidiera ni lo advirtiera a tiempo.
+
+No es un caso aislado. Según el informe de IBM de 2025, una brecha de datos cuesta en promedio 4,4 millones de dólares en el mundo, y las causadas por personas internas malintencionadas son las más costosas, con 4,9 millones en promedio~\cite{ibm2025}. El informe de Verizon del mismo año encontró que la participación de terceros en las brechas se duplicó hasta el 30~\% y que el \textit{ransomware} está presente en el 44~\%~\cite{verizon2025}. En el software, el control de acceso roto subió en 2021 al primer lugar del OWASP Top~10: el 94~\% de las aplicaciones se evaluó en busca de alguna forma de esta falla, y sus debilidades fueron las más frecuentes de toda la lista~\cite{owasp2021}.
+
+Windows, el sistema operativo de escritorio más extendido, ofrece piezas para proteger los archivos, pero por sí solo deja cuatro vacíos:
+\begin{itemize}
+    \item \textbf{Los archivos se leen en claro mientras el equipo está encendido.} BitLocker cifra el disco completo y protege frente al robo del equipo apagado, pero con la sesión abierta cualquier programa con permiso lee los archivos sin cifrar, y una copia en una USB o en un correo sale legible. Además, en Windows~11 24H2 el cifrado del dispositivo se activa por defecto solo en instalaciones nuevas, no al actualizar~\cite{bitlocker24h2}.
+    \item \textbf{El administrador del equipo puede leerlo todo.} Un administrador local puede tomar posesión de cualquier archivo y abrirlo. Windows no separa a quien administra el equipo de quien es dueño de la información.
+    \item \textbf{Nadie registra quién abrió qué, salvo que se configure.} La auditoría de acceso a archivos exige activar una directiva y definir una lista de auditoría (SACL) en cada objeto; con las listas por defecto no se genera ningún evento~\cite{msauditfs}.
+    \item \textbf{Una sesión abierta da acceso a todo.} Windows pide la contraseña al iniciar sesión, pero ninguna confirmación para borrar, copiar o compartir un archivo.
+\end{itemize}
+A estos vacíos se suma el de las aplicaciones: muchas de las que gestionan archivos se ejecutan con una cuenta que puede acceder a todo y deciden los permisos con su propio código, que es justamente la falla que encabeza el OWASP Top~10.
+
 \subsection{Contexto}
-La confidencialidad de un archivo suele depender de dos supuestos frágiles: que la aplicación que lo gestiona evalúe correctamente quién puede abrirlo, y que nadie acceda al soporte donde está guardado por un camino distinto al previsto. Custodia aborda ambos. Cifra en reposo el contenido de cada archivo con AES-256~\cite{fips197}, de modo que un archivo obtenido por fuera de la aplicación sea ilegible. Y no decide por sí misma si una operación está permitida: cada usuario es una cuenta local real de Windows, cada carpeta tiene permisos NTFS reales~\cite{msacl} y cada operación se ejecuta con la identidad del usuario~\cite{msimp}, de manera que es el sistema operativo quien la autoriza o la deniega.
+La confidencialidad de un archivo suele depender de dos supuestos frágiles: que la aplicación que lo gestiona evalúe correctamente quién puede abrirlo, y que nadie acceda al soporte donde está guardado por un camino distinto al previsto. Custodia aborda ambos. Cifra en reposo el contenido de cada archivo con AES-256~\cite{fips197}, de modo que un archivo obtenido por fuera de la aplicación sea ilegible. Y no decide por sí misma si una operación está permitida: cada usuario es una cuenta local real de Windows, cada carpeta tiene permisos NTFS reales~\cite{msacl} y cada operación se ejecuta con la identidad del usuario~\cite{msimp}, de manera que es el sistema operativo quien la autoriza o la deniega. Frente a los vacíos descritos, Custodia cifra cada archivo de forma individual, de modo que una copia obtenida por fuera de la aplicación sea ilegible; ofrece un cifrado por usuario que impide que un administrador lea los archivos personales sin la contraseña de su dueño; registra cada intento en una bitácora encadenada, y exige un código del teléfono en cada operación sensible.
 
 \subsection{Justificación}
 \label{sec:justificacion}
@@ -446,15 +461,15 @@ Cada riesgo se evaluó dos veces: el riesgo \textit{potencial}, suponiendo una a
 \hline
 \textbf{I $\backslash$ P} & \textbf{1} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5} \\
 \hline
-\textbf{5}\rule[-2.4ex]{0pt}{6ex} & \M & \A R5, R9, R14 & \A R1, R3, R6, R16 & \C & \C \\
+\textbf{5}\rule[-2.2ex]{0pt}{5.5ex} & \M & \A R5, R9, R14 & \A R1, R3, R6, R16 & \C & \C \\
 \hline
-\textbf{4}\rule[-2.4ex]{0pt}{6ex} & \B & \M R8, R10 & \A R4, R7, R15 & \C R2 & \C \\
+\textbf{4}\rule[-2.2ex]{0pt}{5.5ex} & \B & \M R8, R10 & \A R4, R7, R15 & \C R2 & \C \\
 \hline
-\textbf{3}\rule[-2.4ex]{0pt}{6ex} & \B & \M & \M R12, R13 & \A R11 & \A \\
+\textbf{3}\rule[-2.2ex]{0pt}{5.5ex} & \B & \M & \M R12, R13 & \A R11 & \A \\
 \hline
-\textbf{2}\rule[-2.4ex]{0pt}{6ex} & \B & \B & \M & \M & \A \\
+\textbf{2}\rule[-2.2ex]{0pt}{5.5ex} & \B & \B & \M & \M & \A \\
 \hline
-\textbf{1}\rule[-2.4ex]{0pt}{6ex} & \B & \B & \B & \B & \M \\
+\textbf{1}\rule[-2.2ex]{0pt}{5.5ex} & \B & \B & \B & \B & \M \\
 \hline
 \end{tabular}
 
@@ -472,15 +487,15 @@ Cada riesgo se evaluó dos veces: el riesgo \textit{potencial}, suponiendo una a
 \hline
 \textbf{I $\backslash$ P} & \textbf{1} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5} \\
 \hline
-\textbf{5}\rule[-2.4ex]{0pt}{6ex} & \M R3, R5, R9 & \A R1, R6 & \A & \C & \C \\
+\textbf{5}\rule[-2.2ex]{0pt}{5.5ex} & \M R3, R5, R9 & \A R1, R6 & \A & \C & \C \\
 \hline
-\textbf{4}\rule[-2.4ex]{0pt}{6ex} & \B R2, R4, R15 & \M R14, R16 & \A & \C & \C \\
+\textbf{4}\rule[-2.2ex]{0pt}{5.5ex} & \B R2, R4, R15 & \M R14, R16 & \A & \C & \C \\
 \hline
-\textbf{3}\rule[-2.4ex]{0pt}{6ex} & \B R12, R13 & \M R7, R10, R11 & \M & \A & \A \\
+\textbf{3}\rule[-2.2ex]{0pt}{5.5ex} & \B R12, R13 & \M R7, R10, R11 & \M & \A & \A \\
 \hline
-\textbf{2}\rule[-2.4ex]{0pt}{6ex} & \B & \B R8 & \M & \M & \A \\
+\textbf{2}\rule[-2.2ex]{0pt}{5.5ex} & \B & \B R8 & \M & \M & \A \\
 \hline
-\textbf{1}\rule[-2.4ex]{0pt}{6ex} & \B & \B & \B & \B & \M \\
+\textbf{1}\rule[-2.2ex]{0pt}{5.5ex} & \B & \B & \B & \B & \M \\
 \hline
 \end{tabular}
 
@@ -527,7 +542,7 @@ Cada riesgo se evaluó dos veces: el riesgo \textit{potencial}, suponiendo una a
 \label{tab:controles}
 \centering
 \footnotesize
-\renewcommand{\arraystretch}{0.94}
+\renewcommand{\arraystretch}{0.9}
 \setlength{\tabcolsep}{3pt}
 \begin{tabular}{|l|p{1.95cm}|p{3.4cm}|p{6.6cm}|p{1.4cm}|p{2.15cm}|}
 \hline
@@ -1021,6 +1036,12 @@ V12 & Límite de copias por usuario (\texttt{test\_descargas}). & Mitigado \\
 
 \begin{thebibliography}{00}
 \raggedright
+\bibitem{tesla} Dark Reading Staff, ``Tesla data breach investigation reveals inside job,'' \textit{Dark Reading}, 21 ago. 2023. [En línea]. Disponible: \url{https://www.darkreading.com/cyberattacks-data-breaches/tesla-data-breach-investigation-reveals-inside-job}
+\bibitem{ibm2025} IBM, \textit{Cost of a Data Breach Report 2025}. Armonk, NY, USA: IBM, jul. 2025.
+\bibitem{verizon2025} Verizon, \textit{2025 Data Breach Investigations Report}. Basking Ridge, NJ, USA: Verizon, abr. 2025.
+\bibitem{owasp2021} OWASP Foundation, ``A01:2021 -- Broken Access Control,'' en \textit{OWASP Top 10:2021}, 2021. [En línea]. Disponible: \url{https://owasp.org/Top10/A01_2021-Broken_Access_Control/}
+\bibitem{bitlocker24h2} Windows Latest, ``Microsoft confirms Windows 11 24H2 turns on device encryption by default,'' 8 may. 2024. [En línea]. Disponible: \url{https://www.windowslatest.com/2024/05/08/microsoft-confirms-windows-11-24h2-turns-on-device-encryption-by-default/}
+\bibitem{msauditfs} Microsoft, ``Audit File System,'' Microsoft Learn. [En línea]. Disponible: \url{https://learn.microsoft.com/windows/security/threat-protection/auditing/audit-file-system} (accedido: 12 nov. 2026).
 \bibitem{fips197} National Institute of Standards and Technology, \textit{Advanced Encryption Standard (AES)}, FIPS PUB 197, nov. 2001.
 \bibitem{msacl} Microsoft, ``Access control lists,'' Microsoft Learn. [En línea]. Disponible: \url{https://learn.microsoft.com/windows/win32/secauthz/access-control-lists} (accedido: 6 nov. 2026).
 \bibitem{msimp} Microsoft, ``ImpersonateLoggedOnUser function (securitybaseapi.h),'' Microsoft Learn. [En línea]. Disponible: \url{https://learn.microsoft.com/windows/win32/api/securitybaseapi/nf-securitybaseapi-impersonateloggedonuser} (accedido: 6 nov. 2026).
